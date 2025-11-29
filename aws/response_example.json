@@ -1,0 +1,51 @@
+{
+  "success": true,
+  "assembly": "...",
+  "debug": {...},
+  "execution": [
+    {
+      "step": 5,
+      "instruction": {"id": 5, "assembly": "mov [rbp-4], eax", "sourceLine": 2},
+      "registers": {"rax": {"hex": "0x5", "decimal": 5}},
+      "callStack": [
+        {
+          "function": "main",
+          "rbp": "0x7fffffffdff8",
+          "rbpDecimal": 140737488347128,
+          "variables": {
+            "x": {"value": 5, "hex": "0x5", "type": "int", "address": "0x7fffffffdff4", "offset": 4, "initialized": true}
+          },
+          "isActive": true
+        }
+      ]
+    },
+    {
+      "step": 12,
+      "instruction": {"id": 12, "assembly": "call suma", "sourceLine": 3},
+      "registers": {"rdi": {"hex": "0x5", "decimal": 5}, "rsi": {"hex": "0x3", "decimal": 3}},
+      "callStack": [
+        {
+          "function": "suma",
+          "rbp": "0x7fffffffdfe0",
+          "rbpDecimal": 140737488347104,
+          "variables": {
+            "a": {"value": 5, "hex": "0x5", "type": "int", "address": "0x7fffffffdfdc", "offset": 4, "initialized": true},
+            "b": {"value": 3, "hex": "0x3", "type": "int", "address": "0x7fffffffdfd8", "offset": 8, "initialized": true}
+          },
+          "isActive": true
+        },
+        {
+          "function": "main",
+          "rbp": "0x7fffffffdff8",
+          "rbpDecimal": 140737488347128,
+          "variables": {
+            "x": {"value": 5, "hex": "0x5", "type": "int", "address": "0x7fffffffdff4", "offset": 4, "initialized": true},
+            "resultado": {"value": 0, "hex": "0x0", "type": "int", "address": "0x7fffffffdfec", "offset": 12, "initialized": false}
+          },
+          "isActive": false
+        }
+      ]
+    }
+  ]
+}
+
