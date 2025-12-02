@@ -54,22 +54,22 @@ private:
     
     // Helpers
     string newLabel(string prefix = "L");
-    void emit(string code, const string& varName = "", const string& description = "");
-    void emitLabel(string label);
+    void generar(string code, const string& varName = "", const string& description = "");
+    void generarLabel(string label);
     
     // Gestión de registros
     string allocReg(DataType type);
     void freeReg(string reg);
     
     // Conversión de tipos
-    void emitTypeConversion(DataType from, DataType to, string reg);
+    void generarConversionTipo(DataType from, DataType to, string reg);
     
     // Gestión de stack frame
-    void emitFunctionProlog(string funcName, int stackSize);
-    void emitFunctionEpilog();
+    void generarPrologoFuncion(string funcName, int stackSize);
+    void generarEpilogoFuncion();
     
     // Helpers para arrays
-    void emitArrayAccess(string arrayName, vector<unique_ptr<Expr>>& indices);
+    void generarAccesoArray(string arrayName, vector<unique_ptr<Expr>>& indices);
     int calculateArrayOffset(vector<int>& dimensions, int dimIndex);
     
     // Helper para calcular tamaño del stack sin generar código

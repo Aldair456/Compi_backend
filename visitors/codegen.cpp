@@ -22,23 +22,25 @@ void CodeGen::setSourceLine(int line) {
     currentSourceLine = line;
 }
 
-void CodeGen::emit(string code, const string& varName, const string& description) {
+void CodeGen::generar(string code, const string& varName, const string& description) {
     output << "    " << code << "\n";
     
-    // Registrar en debug si está habilitado
-    // Usar línea 1 como fallback si no hay línea específica
     int line = currentSourceLine > 0 ? currentSourceLine : 1;
     if (debugGen) {
         debugGen->logInstruction(code, line, varName, description);
     }
 }
 
-void CodeGen::emitLabel(string label) {
+void CodeGen::generarLabel(string label) {
     output << label << ":\n";
+    
+    int line = currentSourceLine > 0 ? currentSourceLine : 0;
+    if (debugGen) {
+        debugGen->logInstruction(label + ":", line, "", "label");
+    }
 }
 
 string CodeGen::allocReg(DataType type) {
-    // Para float usamos registros XMM, para enteros usamos RAX
     if (type == DataType::FLOAT) {
         lastExprWasFloat = true;
         return "xmm0";
@@ -52,20 +54,20 @@ void CodeGen::freeReg(string reg) {
     // Por simplicidad, no gestionamos pool de registros
 }
 
-void CodeGen::emitTypeConversion(DataType from, DataType to, string reg) {
+void CodeGen::generarConversionTipo(DataType from, DataType to, string reg) {
     if (from == to) return;
 
     // INT -> FLOAT
     if (from == DataType::INT && to == DataType::FLOAT) {
-        emit("cvtsi2ss xmm0, eax");
+        generar("cvtsi2ss xmm0, eax");
     }
     // FLOAT -> INT
     else if (from == DataType::FLOAT && to == DataType::INT) {
-        emit("cvttss2si eax, xmm0");
+        generar("cvttss2si eax, xmm0");
     }
     // INT -> LONG
     else if (from == DataType::INT && to == DataType::LONG) {
-        emit("movsx rax, eax");
+        generar("movsx rax, eax");
     }
     // LONG -> INT
     else if (from == DataType::LONG && to == DataType::INT) {
@@ -77,20 +79,20 @@ void CodeGen::emitTypeConversion(DataType from, DataType to, string reg) {
     }
 }
 
-void CodeGen::emitFunctionProlog(string funcName, int stackSize) {
+void CodeGen::generarPrologoFuncion(string funcName, int stackSize) {
     // Este método ya no se usa directamente, se emite en visitFunctionDecl
     // Mantener por compatibilidad pero no debería llamarse
-    emit("push rbp");
-    emit("mov rbp, rsp");
+    generar("push rbp");
+    generar("mov rbp, rsp");
     if (stackSize > 0) {
-        emit("sub rsp, " + to_string(stackSize));
+        generar("sub rsp, " + to_string(stackSize));
     }
 }
 
-void CodeGen::emitFunctionEpilog() {
-    emit("mov rsp, rbp");
-    emit("pop rbp");
-    emit("ret");
+void CodeGen::generarEpilogoFuncion() {
+    generar("mov rsp, rbp");
+    generar("pop rbp");
+    generar("ret");
 }
 
 int CodeGen::calculateArrayOffset(vector<int>& dimensions, int dimIndex) {
@@ -129,7 +131,7 @@ void CodeGen::visitIntLiteral(IntLiteral* node) {
     // Usar la línea del nodo AST
     setSourceLine(node->line);
     
-    emit("mov eax, " + to_string(node->value));
+    generar("mov eax, " + to_string(node->value));
     lastExprWasFloat = false;
 }
 
@@ -154,7 +156,7 @@ void CodeGen::visitFloatLiteral(FloatLiteral* node) {
         output << currentOutput;
     }
 
-    emit("movss xmm0, [" + label + "]");
+    generar("movss xmm0, [" + label + "]");
     lastExprWasFloat = true;
 }
 
@@ -164,8 +166,8 @@ void CodeGen::visitLongLiteral(LongLiteral* node) {
     
     // Limpiar RAX completamente antes de cargar el valor
     // Esto asegura que los 64 bits estén limpios
-    emit("xor rax, rax");
-    emit("mov eax, " + to_string(node->value));
+    generar("xor rax, rax");
+    generar("mov eax, " + to_string(node->value));
     lastExprWasFloat = false;
 }
 void CodeGen::visitStringLiteral(StringLiteral* node) {
@@ -226,7 +228,7 @@ void CodeGen::visitStringLiteral(StringLiteral* node) {
     }
 
     // Cargar dirección del string en rax
-    emit("lea rax, [" + label + "]");
+    generar("lea rax, [" + label + "]");
     lastExprWasFloat = false;
 }
 
@@ -239,22 +241,22 @@ void CodeGen::visitVariable(Variable* node) {
         VarInfo& var = localVars[node->name];
 
         if (var.type == DataType::FLOAT) {
-            emit("movss xmm0, [rbp - " + to_string(var.offset) + "]");
+            generar("movss xmm0, [rbp - " + to_string(var.offset) + "]");
             lastExprWasFloat = true;
         } else if (var.type == DataType::LONG) {
-            emit("mov rax, [rbp - " + to_string(var.offset) + "]");
+            generar("mov rax, [rbp - " + to_string(var.offset) + "]");
             lastExprWasFloat = false;
         } else {
             // Cargar y extender directamente desde memoria (más eficiente)
-            emit("mov eax, [rbp - " + to_string(var.offset) + "]");
-            emit("movsx rax, eax");
+            generar("mov eax, [rbp - " + to_string(var.offset) + "]");
+            generar("movsx rax, eax");
             lastExprWasFloat = false;
         }
     } else if (globalVars.find(node->name) != globalVars.end()) {
         VarInfo& var = globalVars[node->name];
-        emit("mov eax, [" + node->name + "]");
+        generar("mov eax, [" + node->name + "]");
 
-        emit("movsx rax, eax");
+        generar("movsx rax, eax");
         lastExprWasFloat = false;
     }
 }
@@ -273,10 +275,10 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     // Guardar resultado en stack - usar línea del operador
     currentSourceLine = opLine;
     if (rightWasFloat) {
-        emit("sub rsp, 8");
-        emit("movss [rsp], xmm0");
+        generar("sub rsp, 8");
+        generar("movss [rsp], xmm0");
     } else {
-        emit("push rax");
+        generar("push rax");
     }
 
     // Evaluar operando izquierdo
@@ -289,19 +291,19 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     // Recuperar operando derecho - usar línea del operador
     currentSourceLine = opLine;
     if (rightWasFloat) {
-        emit("movss xmm1, [rsp]");
-        emit("add rsp, 8");
+        generar("movss xmm1, [rsp]");
+        generar("add rsp, 8");
     } else {
-        emit("pop rbx");
+        generar("pop rbx");
         // Si left es float pero right no, convertir right a float
         if (isFloatOp && !rightWasFloat) {
-            emit("cvtsi2ss xmm1, ebx");
+            generar("cvtsi2ss xmm1, ebx");
         }
     }
 
     // Si right es float pero left no, convertir left a float
     if (isFloatOp && !leftWasFloat) {
-        emit("cvtsi2ss xmm0, eax");
+        generar("cvtsi2ss xmm0, eax");
     }
 
     // Realizar operación - usar línea del operador
@@ -309,85 +311,85 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     switch (node->op.type) {
         case TokenType::PLUS:
             if (isFloatOp) {
-                emit("addss xmm0, xmm1");
+                generar("addss xmm0, xmm1");
                 lastExprWasFloat = true;
             } else {
-                emit("add rax, rbx");
+                generar("add rax, rbx");
                 lastExprWasFloat = false;
             }
             break;
 
         case TokenType::MINUS:
             if (isFloatOp) {
-                emit("subss xmm0, xmm1");
+                generar("subss xmm0, xmm1");
                 lastExprWasFloat = true;
             } else {
-                emit("sub rax, rbx");
+                generar("sub rax, rbx");
                 lastExprWasFloat = false;
             }
             break;
 
         case TokenType::MULTIPLY:
             if (isFloatOp) {
-                emit("mulss xmm0, xmm1");
+                generar("mulss xmm0, xmm1");
                 lastExprWasFloat = true;
             } else {
-                emit("imul rax, rbx");
+                generar("imul rax, rbx");
                 lastExprWasFloat = false;
             }
             break;
 
         case TokenType::DIVIDE:
             if (isFloatOp) {
-                emit("divss xmm0, xmm1");
+                generar("divss xmm0, xmm1");
                 lastExprWasFloat = true;
             } else {
-                emit("xor rdx, rdx");  // Clear RDX para división
-                emit("idiv rbx");
+                generar("xor rdx, rdx");  // Clear RDX para división
+                generar("idiv rbx");
                 lastExprWasFloat = false;
             }
             break;
 
         // Operadores relacionales
         case TokenType::EQ:
-            emit("cmp rax, rbx");
-            emit("sete al");
-            emit("movzx eax, al");
+            generar("cmp rax, rbx");
+            generar("sete al");
+            generar("movzx eax, al");
             lastExprWasFloat = false;
             break;
 
         case TokenType::NE:
-            emit("cmp rax, rbx");
-            emit("setne al");
-            emit("movzx eax, al");
+            generar("cmp rax, rbx");
+            generar("setne al");
+            generar("movzx eax, al");
             lastExprWasFloat = false;
             break;
 
         case TokenType::LT:
-            emit("cmp rax, rbx");
-            emit("setl al");
-            emit("movzx eax, al");
+            generar("cmp rax, rbx");
+            generar("setl al");
+            generar("movzx eax, al");
             lastExprWasFloat = false;
             break;
 
         case TokenType::GT:
-            emit("cmp rax, rbx");
-            emit("setg al");
-            emit("movzx eax, al");
+            generar("cmp rax, rbx");
+            generar("setg al");
+            generar("movzx eax, al");
             lastExprWasFloat = false;
             break;
 
         case TokenType::LE:
-            emit("cmp rax, rbx");
-            emit("setle al");
-            emit("movzx eax, al");
+            generar("cmp rax, rbx");
+            generar("setle al");
+            generar("movzx eax, al");
             lastExprWasFloat = false;
             break;
 
         case TokenType::GE:
-            emit("cmp rax, rbx");
-            emit("setge al");
-            emit("movzx eax, al");
+            generar("cmp rax, rbx");
+            generar("setge al");
+            generar("movzx eax, al");
             lastExprWasFloat = false;
             break;
 
@@ -407,16 +409,16 @@ void CodeGen::visitUnaryOp(UnaryOp* node) {
     if (node->op.type == TokenType::MINUS) {
         if (lastExprWasFloat) {
             // Negar float: xor con bit de signo
-            emit("movss xmm1, xmm0");
-            emit("xorps xmm0, xmm0");
-            emit("subss xmm0, xmm1");
+            generar("movss xmm1, xmm0");
+            generar("xorps xmm0, xmm0");
+            generar("subss xmm0, xmm1");
         } else {
-            emit("neg rax");
+            generar("neg rax");
         }
     } else if (node->op.type == TokenType::NOT) {
-        emit("test rax, rax");
-        emit("setz al");
-        emit("movzx eax, al");
+        generar("test rax, rax");
+        generar("setz al");
+        generar("movzx eax, al");
     }
 }
 
@@ -433,13 +435,13 @@ void CodeGen::visitCastExpr(CastExpr* node) {
     // Realizar la conversión y actualizar el flag
     if (fromType != toType) {
         if (fromType == DataType::INT && toType == DataType::FLOAT) {
-            emit("cvtsi2ss xmm0, eax");
+            generar("cvtsi2ss xmm0, eax");
             lastExprWasFloat = true;
         } else if (fromType == DataType::FLOAT && toType == DataType::INT) {
-            emit("cvttss2si eax, xmm0");
+            generar("cvttss2si eax, xmm0");
             lastExprWasFloat = false;
         } else if (fromType == DataType::INT && toType == DataType::LONG) {
-            emit("movsx rax, eax");
+            generar("movsx rax, eax");
             lastExprWasFloat = false;
         }
     }
@@ -454,18 +456,18 @@ void CodeGen::visitTernaryExpr(TernaryExpr* node) {
 
     // Evaluar condición
     node->condition->accept(this);
-    emit("test rax, rax");
-    emit("jz " + labelFalse);
+    generar("test rax, rax");
+    generar("jz " + labelFalse);
 
     // Rama verdadera
     node->exprTrue->accept(this);
-    emit("jmp " + labelEnd);
+    generar("jmp " + labelEnd);
 
     // Rama falsa
-    emitLabel(labelFalse);
+    generarLabel(labelFalse);
     node->exprFalse->accept(this);
 
-    emitLabel(labelEnd);
+    generarLabel(labelEnd);
 }
 
 void CodeGen::visitCallExpr(CallExpr* node) {
@@ -482,29 +484,29 @@ void CodeGen::visitCallExpr(CallExpr* node) {
             if (fmtStr) {
                 // Es un string literal - usar como formato directamente
                 fmtStr->accept(this);  // Esto carga la dirección del string en rax
-                emit("mov rdi, rax");  // Primer argumento: formato
+                generar("mov rdi, rax");  // Primer argumento: formato
 
                 // Si hay más argumentos, pasarlos
                 if (node->arguments.size() > 1) {
                     // CRÍTICO: Guardar rdi antes de evaluar argumentos que puedan ser llamadas a función
-                    emit("push rdi");  // Guardar formato en stack
+                    generar("push rdi");  // Guardar formato en stack
 
                     node->arguments[1]->accept(this);
 
                     // Determinar formato basado en tipo del segundo argumento
                     if (lastExprWasFloat) {
-                        emit("cvtss2sd xmm0, xmm0");
-                        emit("pop rdi");  // Recuperar formato
-                        emit("mov rax, 1");  // 1 registro XMM usado
+                        generar("cvtss2sd xmm0, xmm0");
+                        generar("pop rdi");  // Recuperar formato
+                        generar("mov rax, 1");  // 1 registro XMM usado
                     } else {
                         // El valor ya está en rax (extendido si era int)
                         // Para printf en x86-64, pasamos el valor en rsi
-                        emit("mov rsi, rax");  // Mover valor completo de rax a rsi
-                        emit("pop rdi");  // Recuperar formato
-                        emit("xor rax, rax");  // 0 registros XMM usados (printf varargs)
+                        generar("mov rsi, rax");  // Mover valor completo de rax a rsi
+                        generar("pop rdi");  // Recuperar formato
+                        generar("xor rax, rax");  // 0 registros XMM usados (printf varargs)
                     }
                 } else {
-                    emit("xor rax, rax");  // Sin argumentos adicionales
+                    generar("xor rax, rax");  // Sin argumentos adicionales
                 }
             } else {
                 // No es string literal - asumir que es un valor numérico
@@ -512,18 +514,18 @@ void CodeGen::visitCallExpr(CallExpr* node) {
 
                 // Determinar formato basado en tipo
                 if (lastExprWasFloat) {
-                    emit("cvtss2sd xmm0, xmm0");
-                    emit("lea rdi, [fmt_float]");
-                    emit("mov rax, 1");
+                    generar("cvtss2sd xmm0, xmm0");
+                    generar("lea rdi, [fmt_float]");
+                    generar("mov rax, 1");
                 } else {
-                    emit("mov rsi, rax");
-                    emit("lea rdi, [fmt_int]");
-                    emit("xor rax, rax");
+                    generar("mov rsi, rax");
+                    generar("lea rdi, [fmt_int]");
+                    generar("xor rax, rax");
                 }
             }
 
             // Stack ya está alineado por visitFunctionDecl, solo llamar
-            emit("call printf");
+            generar("call printf");
 
         }
     } else {
@@ -534,10 +536,10 @@ void CodeGen::visitCallExpr(CallExpr* node) {
 
         for (size_t i = 0; i < node->arguments.size() && i < 6; i++) {
             node->arguments[i]->accept(this);
-            emit("mov " + argRegs[i] + ", rax");
+            generar("mov " + argRegs[i] + ", rax");
         }
 
-        emit("call " + node->functionName);
+        generar("call " + node->functionName);
     }
 }
 
@@ -570,18 +572,18 @@ void CodeGen::visitArrayAccess(ArrayAccess* node) {
         int typeSize = 4; // int, float = 4 bytes
         if (varInfo->type == DataType::LONG) typeSize = 8;
 
-        emit("imul rax, " + to_string(typeSize));
-        emit("mov rbx, rbp");
-        emit("sub rbx, " + to_string(varInfo->offset));
-        emit("add rbx, rax");
+        generar("imul rax, " + to_string(typeSize));
+        generar("mov rbx, rbp");
+        generar("sub rbx, " + to_string(varInfo->offset));
+        generar("add rbx, rax");
 
         // Cargar valor
         if (varInfo->type == DataType::FLOAT) {
-            emit("movss xmm0, [rbx]");
+            generar("movss xmm0, [rbx]");
             lastExprWasFloat = true;
         } else {
-            emit("mov eax, [rbx]");
-            emit("movsx rax, eax");
+            generar("mov eax, [rbx]");
+            generar("movsx rax, eax");
             lastExprWasFloat = false;
         }
     } else if (node->indices.size() == 2) {
@@ -589,26 +591,26 @@ void CodeGen::visitArrayAccess(ArrayAccess* node) {
         // offset = (i * cols + j) * typeSize
 
         node->indices[0]->accept(this);  // i
-        emit("imul rax, " + to_string(varInfo->dimensions[1]));
-        emit("push rax");
+        generar("imul rax, " + to_string(varInfo->dimensions[1]));
+        generar("push rax");
 
         node->indices[1]->accept(this);  // j
-        emit("pop rbx");
-        emit("add rax, rbx");
+        generar("pop rbx");
+        generar("add rax, rbx");
 
         int typeSize = 4;
         if (varInfo->type == DataType::LONG) typeSize = 8;
 
-        emit("imul rax, " + to_string(typeSize));
-        emit("mov rbx, rbp");
-        emit("sub rbx, " + to_string(varInfo->offset));
-        emit("add rbx, rax");
+        generar("imul rax, " + to_string(typeSize));
+        generar("mov rbx, rbp");
+        generar("sub rbx, " + to_string(varInfo->offset));
+        generar("add rbx, rax");
 
         if (varInfo->type == DataType::FLOAT) {
-            emit("movss xmm0, [rbx]");
+            generar("movss xmm0, [rbx]");
             lastExprWasFloat = true;
         } else {
-            emit("mov eax, [rbx]");
+            generar("mov eax, [rbx]");
             lastExprWasFloat = false;
         }
     }
@@ -628,10 +630,10 @@ void CodeGen::visitAssignExpr(AssignExpr* node) {
         
         // Guardar valor temporalmente
         if (wasFloat) {
-            emit("sub rsp, 8");
-            emit("movss [rsp], xmm0");
+            generar("sub rsp, 8");
+            generar("movss [rsp], xmm0");
         } else {
-            emit("push rax");
+            generar("push rax");
         }
         
         // Calcular dirección del array (similar a visitArrayAccess)
@@ -641,7 +643,7 @@ void CodeGen::visitAssignExpr(AssignExpr* node) {
         }
         
         if (!varInfo) {
-            emit("add rsp, 8");  // Limpiar stack
+            generar("add rsp, 8");  // Limpiar stack
             return;
         }
         
@@ -652,66 +654,66 @@ void CodeGen::visitAssignExpr(AssignExpr* node) {
             int typeSize = 4;
             if (varInfo->type == DataType::LONG) typeSize = 8;
             
-            emit("imul rax, " + to_string(typeSize));
-            emit("mov rbx, rbp");
-            emit("sub rbx, " + to_string(varInfo->offset));
-            emit("add rbx, rax");
+            generar("imul rax, " + to_string(typeSize));
+            generar("mov rbx, rbp");
+            generar("sub rbx, " + to_string(varInfo->offset));
+            generar("add rbx, rax");
             
             // Recuperar y almacenar valor
             if (wasFloat) {
-                emit("movss xmm0, [rsp]");
-                emit("add rsp, 8");
-                emit("movss [rbx], xmm0");
+                generar("movss xmm0, [rsp]");
+                generar("add rsp, 8");
+                generar("movss [rbx], xmm0");
                 lastExprWasFloat = true;
             } else {
-                emit("pop rax");
+                generar("pop rax");
                 if (varInfo->type == DataType::FLOAT) {
-                    emit("cvtsi2ss xmm0, rax");
-                    emit("movss [rbx], xmm0");
+                    generar("cvtsi2ss xmm0, rax");
+                    generar("movss [rbx], xmm0");
                     lastExprWasFloat = true;
                 } else if (varInfo->type == DataType::LONG) {
-                    emit("mov [rbx], rax");
+                    generar("mov [rbx], rax");
                     lastExprWasFloat = false;
                 } else {
-                    emit("mov [rbx], eax");
+                    generar("mov [rbx], eax");
                     lastExprWasFloat = false;
                 }
             }
         } else if (node->indices.size() == 2) {
             // Array 2D
             node->indices[0]->accept(this);
-            emit("imul rax, " + to_string(varInfo->dimensions[1]));
-            emit("push rax");
+            generar("imul rax, " + to_string(varInfo->dimensions[1]));
+            generar("push rax");
             
             node->indices[1]->accept(this);
-            emit("pop rbx");
-            emit("add rax, rbx");
+            generar("pop rbx");
+            generar("add rax, rbx");
             
             int typeSize = 4;
             if (varInfo->type == DataType::LONG) typeSize = 8;
             
-            emit("imul rax, " + to_string(typeSize));
-            emit("mov rbx, rbp");
-            emit("sub rbx, " + to_string(varInfo->offset));
-            emit("add rbx, rax");
+            generar("imul rax, " + to_string(typeSize));
+            generar("mov rbx, rbp");
+            generar("sub rbx, " + to_string(varInfo->offset));
+            generar("add rbx, rax");
             
             // Recuperar y almacenar valor
             if (wasFloat) {
-                emit("movss xmm0, [rsp]");
-                emit("add rsp, 8");
-                emit("movss [rbx], xmm0");
+                generar("movss xmm0, [rsp]");
+                generar("add rsp, 8");
+                generar("movss [rbx], xmm0");
                 lastExprWasFloat = true;
             } else {
-                emit("pop rax");
+                generar("pop rax");
                 if (varInfo->type == DataType::FLOAT) {
-                    emit("cvtsi2ss xmm0, rax");
-                    emit("movss [rbx], xmm0");
+                    generar("cvtsi2ss xmm0, rax");
+                    generar("movss [rbx], xmm0");
                     lastExprWasFloat = true;
                 } else if (varInfo->type == DataType::LONG) {
-                    emit("mov [rbx], rax");
+                    generar("mov [rbx], rax");
                     lastExprWasFloat = false;
                 } else {
-                    emit("mov [rbx], eax");
+                    generar("mov [rbx], eax");
                     lastExprWasFloat = false;
                 }
             }
@@ -719,14 +721,14 @@ void CodeGen::visitAssignExpr(AssignExpr* node) {
         
         // Cargar el valor de vuelta para que quede en rax/xmm0
         if (varInfo->type == DataType::FLOAT) {
-            emit("movss xmm0, [rbx]");
+            generar("movss xmm0, [rbx]");
             lastExprWasFloat = true;
         } else if (varInfo->type == DataType::LONG) {
-            emit("mov rax, [rbx]");
+            generar("mov rax, [rbx]");
             lastExprWasFloat = false;
         } else {
-            emit("mov eax, [rbx]");
-            emit("movsx rax, eax");
+            generar("mov eax, [rbx]");
+            generar("movsx rax, eax");
             lastExprWasFloat = false;
         }
     } else {
@@ -737,15 +739,15 @@ void CodeGen::visitAssignExpr(AssignExpr* node) {
             VarInfo& var = localVars[node->varName];
             
             if (var.type == DataType::FLOAT) {
-                emit("movss [rbp - " + to_string(var.offset) + "], xmm0");
+                generar("movss [rbp - " + to_string(var.offset) + "], xmm0");
                 // El valor ya está en xmm0
                 lastExprWasFloat = true;
             } else if (var.type == DataType::LONG) {
-                emit("mov [rbp - " + to_string(var.offset) + "], rax");
+                generar("mov [rbp - " + to_string(var.offset) + "], rax");
                 // El valor ya está en rax
                 lastExprWasFloat = false;
             } else {
-                emit("mov [rbp - " + to_string(var.offset) + "], eax");
+                generar("mov [rbp - " + to_string(var.offset) + "], eax");
                 // El valor ya está en rax (eax)
                 lastExprWasFloat = false;
             }
@@ -825,11 +827,11 @@ void CodeGen::visitVarDecl(VarDecl* node) {
             currentSourceLine = declLine;
 
             if (node->type == DataType::FLOAT) {
-                emit("movss [rbp - " + to_string(stackOffset) + "], xmm0");
+                generar("movss [rbp - " + to_string(stackOffset) + "], xmm0");
             } else if (node->type == DataType::LONG) {
-                emit("mov [rbp - " + to_string(stackOffset) + "], rax");
+                generar("mov [rbp - " + to_string(stackOffset) + "], rax");
             } else {
-                emit("mov [rbp - " + to_string(stackOffset) + "], eax");
+                generar("mov [rbp - " + to_string(stackOffset) + "], eax");
             }
         }
     }
@@ -852,7 +854,7 @@ void CodeGen::visitAssignStmt(AssignStmt* node) {
         node->value->accept(this);
         // Restaurar línea de asignación para push
         currentSourceLine = assignLine;
-        emit("push rax");  // Guardar valor
+        generar("push rax");  // Guardar valor
 
         // Calcular dirección del array
         VarInfo* varInfo = nullptr;
@@ -874,52 +876,52 @@ void CodeGen::visitAssignStmt(AssignStmt* node) {
             int typeSize = 4;
             if (varInfo->type == DataType::LONG) typeSize = 8;
 
-            emit("imul rax, " + to_string(typeSize));
-            emit("mov rbx, rbp");
-            emit("sub rbx, " + to_string(varInfo->offset));
-            emit("add rbx, rax");
+            generar("imul rax, " + to_string(typeSize));
+            generar("mov rbx, rbp");
+            generar("sub rbx, " + to_string(varInfo->offset));
+            generar("add rbx, rax");
 
-            emit("pop rax");  // Recuperar valor
+            generar("pop rax");  // Recuperar valor
 
             if (varInfo->type == DataType::FLOAT) {
-                emit("movss [rbx], xmm0");
+                generar("movss [rbx], xmm0");
             } else if (varInfo->type == DataType::LONG) {
                 // Para long, asegurarse de extender correctamente
-                emit("movsx rax, eax");
-                emit("mov [rbx], rax");
+                generar("movsx rax, eax");
+                generar("mov [rbx], rax");
             } else {
-                emit("mov [rbx], eax");
+                generar("mov [rbx], eax");
             }
         } else if (node->indices.size() == 2) {
             // Array 2D
             node->indices[0]->accept(this);
             currentSourceLine = assignLine;
-            emit("imul rax, " + to_string(varInfo->dimensions[1]));
-            emit("push rax");
+            generar("imul rax, " + to_string(varInfo->dimensions[1]));
+            generar("push rax");
 
             node->indices[1]->accept(this);
             currentSourceLine = assignLine;
-            emit("pop rbx");
-            emit("add rax, rbx");
+            generar("pop rbx");
+            generar("add rax, rbx");
 
             int typeSize = 4;
             if (varInfo->type == DataType::LONG) typeSize = 8;
 
-            emit("imul rax, " + to_string(typeSize));
-            emit("mov rbx, rbp");
-            emit("sub rbx, " + to_string(varInfo->offset));
-            emit("add rbx, rax");
+            generar("imul rax, " + to_string(typeSize));
+            generar("mov rbx, rbp");
+            generar("sub rbx, " + to_string(varInfo->offset));
+            generar("add rbx, rax");
 
-            emit("pop rax");  // Recuperar valor
+            generar("pop rax");  // Recuperar valor
 
             if (varInfo->type == DataType::FLOAT) {
-                emit("movss [rbx], xmm0");
+                generar("movss [rbx], xmm0");
             } else if (varInfo->type == DataType::LONG) {
                 // Para long, asegurarse de extender correctamente
-                emit("movsx rax, eax");
-                emit("mov [rbx], rax");
+                generar("movsx rax, eax");
+                generar("mov [rbx], rax");
             } else {
-                emit("mov [rbx], eax");
+                generar("mov [rbx], eax");
             }
         }
     } else {
@@ -932,13 +934,13 @@ void CodeGen::visitAssignStmt(AssignStmt* node) {
             VarInfo& var = localVars[node->varName];
 
             if (var.type == DataType::FLOAT) {
-                emit("movss [rbp - " + to_string(var.offset) + "], xmm0");
+                generar("movss [rbp - " + to_string(var.offset) + "], xmm0");
             } else if (var.type == DataType::LONG) {
                 // Si el valor viene de un int, extenderlo a long
-                emit("movsx rax, eax");
-                emit("mov [rbp - " + to_string(var.offset) + "], rax");
+                generar("movsx rax, eax");
+                generar("mov [rbp - " + to_string(var.offset) + "], rax");
             } else {
-                emit("mov [rbp - " + to_string(var.offset) + "], eax");
+                generar("mov [rbp - " + to_string(var.offset) + "], eax");
             }
         }
     }
@@ -962,20 +964,20 @@ void CodeGen::visitIfStmt(IfStmt* node) {
 
     // Evaluar condición
     node->condition->accept(this);
-    emit("test rax, rax");
+    generar("test rax, rax");
 
     if (node->elseBranch) {
-        emit("jz " + labelElse);
+        generar("jz " + labelElse);
         node->thenBranch->accept(this);
-        emit("jmp " + labelEnd);
+        generar("jmp " + labelEnd);
 
-        emitLabel(labelElse);
+        generarLabel(labelElse);
         node->elseBranch->accept(this);
-        emitLabel(labelEnd);
+        generarLabel(labelEnd);
     } else {
-        emit("jz " + labelEnd);
+        generar("jz " + labelEnd);
         node->thenBranch->accept(this);
-        emitLabel(labelEnd);
+        generarLabel(labelEnd);
     }
 }
 
@@ -986,18 +988,18 @@ void CodeGen::visitWhileStmt(WhileStmt* node) {
     string labelStart = newLabel("while_start_");
     string labelEnd = newLabel("while_end_");
 
-    emitLabel(labelStart);
+    generarLabel(labelStart);
 
     // Evaluar condición
     node->condition->accept(this);
-    emit("test rax, rax");
-    emit("jz " + labelEnd);
+    generar("test rax, rax");
+    generar("jz " + labelEnd);
 
     // Cuerpo del while
     node->body->accept(this);
 
-    emit("jmp " + labelStart);
-    emitLabel(labelEnd);
+    generar("jmp " + labelStart);
+    generarLabel(labelEnd);
 }
 
 void CodeGen::visitForStmt(ForStmt* node) {
@@ -1012,13 +1014,13 @@ void CodeGen::visitForStmt(ForStmt* node) {
         node->initializer->accept(this);
     }
 
-    emitLabel(labelStart);
+    generarLabel(labelStart);
 
     // Condición
     if (node->condition) {
         node->condition->accept(this);
-        emit("test rax, rax");
-        emit("jz " + labelEnd);
+        generar("test rax, rax");
+        generar("jz " + labelEnd);
     }
 
 
@@ -1030,8 +1032,8 @@ void CodeGen::visitForStmt(ForStmt* node) {
         node->increment->accept(this);
     }
 
-    emit("jmp " + labelStart);
-    emitLabel(labelEnd);
+    generar("jmp " + labelStart);
+    generarLabel(labelEnd);
 }
 
 void CodeGen::visitReturnStmt(ReturnStmt* node) {
@@ -1042,7 +1044,7 @@ void CodeGen::visitReturnStmt(ReturnStmt* node) {
         node->value->accept(this);
     }
 
-    emitFunctionEpilog();
+    generarEpilogoFuncion();
 }
 
 void CodeGen::visitExprStmt(ExprStmt* node) {
@@ -1228,17 +1230,17 @@ void CodeGen::visitFunctionDecl(FunctionDecl* node) {
     }
 
     // Emitir label de función (sin línea específica, es metadata)
-    emitLabel(node->name);
+    generarLabel(node->name);
 
     // Prólogo - usar línea de la función
     currentSourceLine = funcLine;
-    emit("push rbp");
-    emit("mov rbp, rsp");
+    generar("push rbp");
+    generar("mov rbp, rsp");
 
     // DEAD CODE ELIMINATION: Reservar espacio en el stack SOLO si hay variables locales
     // Si no hay variables locales, no necesitamos reservar stack (los parámetros están en registros)
     if (localVarStackSize > 0) {
-        emit("sub rsp, " + to_string(localVarStackSize));
+        generar("sub rsp, " + to_string(localVarStackSize));
     }
 
     // Guardar parámetros en stack y calcular stackOffset inicial
@@ -1270,7 +1272,7 @@ void CodeGen::visitFunctionDecl(FunctionDecl* node) {
         // Guardar parámetro en stack - usar línea de la función
         currentSourceLine = funcLine;
         if (param.first == DataType::LONG) {
-            emit("mov [rbp - " + to_string(varInfo.offset) + "], " + paramRegs[i]);
+            generar("mov [rbp - " + to_string(varInfo.offset) + "], " + paramRegs[i]);
         } else {
             // Para registros de 32 bits: rdi->edi, rsi->esi, etc.
             string reg32;
@@ -1281,7 +1283,7 @@ void CodeGen::visitFunctionDecl(FunctionDecl* node) {
             else if (paramRegs[i] == "r8") reg32 = "r8d";
             else if (paramRegs[i] == "r9") reg32 = "r9d";
 
-            emit("mov [rbp - " + to_string(varInfo.offset) + "], " + reg32);
+            generar("mov [rbp - " + to_string(varInfo.offset) + "], " + reg32);
         }
     }
 
@@ -1293,15 +1295,17 @@ void CodeGen::visitFunctionDecl(FunctionDecl* node) {
     if (node->returnType == DataType::VOID) {
         // Usar línea del final de la función (última línea del bloque)
         currentSourceLine = funcLine;
-        emitFunctionEpilog();
+        generarEpilogoFuncion();
     }
 
     output << "\n";
     
-    // Limpiar stack frame cuando termina la función
-    if (debugGen) {
-        debugGen->clearStackFrame();
-    }
+    // NO limpiar stack frame - necesitamos todas las variables para el debugger
+    // El stackFrame se mantiene con todas las variables de todas las funciones
+    // para que el emulador pueda mostrar el call stack completo
+    // if (debugGen) {
+    //     debugGen->clearStackFrame();
+    // }
     
     currentFunction = "";
     // Restaurar línea original
