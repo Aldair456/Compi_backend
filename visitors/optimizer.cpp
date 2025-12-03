@@ -136,7 +136,6 @@ void Optimizer::optimizeBlock(Block* block) {
     }
 
     block->statements = move(optimizedStmts);
-    
     eliminateDeadStores(block);
 }
 
@@ -245,14 +244,12 @@ unique_ptr<Expr> Optimizer::optimizeExpr(Expr* expr) {
 
     else if (AssignExpr* assignExpr = dynamic_cast<AssignExpr*>(expr)) {
         auto optimizedValue = optimizeExpr(assignExpr->value.get());
-        
         int value;
         if (isIntLiteral(optimizedValue.get(), value)) {
             constantValues[assignExpr->varName] = value;
         } else {
             constantValues.erase(assignExpr->varName);
         }
-        
         unique_ptr<AssignExpr> cloned;
         if (assignExpr->isArrayAssign) {
             vector<unique_ptr<Expr>> optimizedIndices;
@@ -533,13 +530,22 @@ bool Optimizer::tryEvaluateConstantLoop(ForStmt* forStmt, vector<unique_ptr<Stmt
     if (!forStmt->condition) return false;
 
     BinaryOp* condition = dynamic_cast<BinaryOp*>(forStmt->condition.get());
-    if (!condition || condition->op.type != TokenType::LT) return false;
+    if (!condition) return false;
+    
+    // Soporte para < y <=
+    if (condition->op.type != TokenType::LT && condition->op.type != TokenType::LE) 
+        return false;
 
     Variable* condVar = dynamic_cast<Variable*>(condition->left.get());
     if (!condVar || condVar->name != loopVar) return false;
 
     int endValue;
     if (!isIntLiteral(condition->right.get(), endValue)) return false;
+    
+    // Ajustar para <=
+    if (condition->op.type == TokenType::LE) {
+        endValue++;
+    }
 
     if (!forStmt->increment) return false;
 
@@ -566,22 +572,27 @@ bool Optimizer::tryEvaluateConstantLoop(ForStmt* forStmt, vector<unique_ptr<Stmt
 
     Stmt* bodyStmt = bodyBlock->statements[0].get();
     string accumVar;
+    TokenType accumOp;
     bool isAccumulation = false;
 
     if (AssignStmt* assign = dynamic_cast<AssignStmt*>(bodyStmt)) {
         if (assign->value) {
             BinaryOp* binOp = dynamic_cast<BinaryOp*>(assign->value.get());
-            if (binOp && binOp->op.type == TokenType::PLUS) {
+            // ✅ Ahora soporta PLUS y MULTIPLY
+            if (binOp && (binOp->op.type == TokenType::PLUS || binOp->op.type == TokenType::MULTIPLY)) {
                 Variable* leftVar = dynamic_cast<Variable*>(binOp->left.get());
                 Variable* rightVar = dynamic_cast<Variable*>(binOp->right.get());
+                
                 if (leftVar && leftVar->name == assign->varName) {
                     if (rightVar && rightVar->name == loopVar) {
                         accumVar = assign->varName;
+                        accumOp = binOp->op.type;
                         isAccumulation = true;
                     }
                 } else if (rightVar && rightVar->name == assign->varName) {
                     if (leftVar && leftVar->name == loopVar) {
                         accumVar = assign->varName;
+                        accumOp = binOp->op.type;
                         isAccumulation = true;
                     }
                 }
@@ -591,16 +602,26 @@ bool Optimizer::tryEvaluateConstantLoop(ForStmt* forStmt, vector<unique_ptr<Stmt
 
     if (!isAccumulation) return false;
 
-    int result = 0;
+    // Obtener valor inicial del acumulador
+    int result;
     if (constantValues.find(accumVar) != constantValues.end()) {
         result = constantValues[accumVar];
+    } else {
+        // Si no hay valor inicial, asumir 0 para suma, 1 para multiplicación
+        result = (accumOp == TokenType::PLUS) ? 0 : 1;
     }
 
+    // Evaluar el loop
     for (int i = startValue; i < endValue; i += incValue) {
-        result += i;
+        if (accumOp == TokenType::PLUS) {
+            result += i;
+        } else if (accumOp == TokenType::MULTIPLY) {
+            result *= i;
+        }
     }
 
-    cout << "    Constant loop evaluation: loop replaced with constant " << result << endl;
+    string opName = (accumOp == TokenType::PLUS) ? "sum" : "product";
+    cout << "    Constant loop evaluation: " << opName << " loop replaced with constant " << result << endl;
 
     if (initDecl) {
         output.push_back(cloneStmt(initDecl));
@@ -733,10 +754,8 @@ unique_ptr<Expr> Optimizer::cloneExpr(Expr* expr) {
 void Optimizer::eliminateDeadStores(Block* block) {
     set<string> liveVars;
     vector<bool> isDead(block->statements.size(), false);
-    
     for (int i = block->statements.size() - 1; i >= 0; i--) {
         Stmt* stmt = block->statements[i].get();
-        
         if (AssignStmt* assign = dynamic_cast<AssignStmt*>(stmt)) {
             if (liveVars.find(assign->varName) == liveVars.end()) {
                 isDead[i] = true;
@@ -744,10 +763,8 @@ void Optimizer::eliminateDeadStores(Block* block) {
             } else {
                 liveVars.erase(assign->varName);
             }
-            
             getReadVariables(assign->value.get(), liveVars);
         }
-        
         else if (VarDecl* varDecl = dynamic_cast<VarDecl*>(stmt)) {
             if (liveVars.find(varDecl->name) == liveVars.end()) {
                 isDead[i] = true;
@@ -759,25 +776,21 @@ void Optimizer::eliminateDeadStores(Block* block) {
                 }
             }
         }
-        
         else {
             getReadVariablesInStmt(stmt, liveVars);
         }
     }
-    
     vector<unique_ptr<Stmt>> aliveStmts;
     for (size_t i = 0; i < block->statements.size(); i++) {
         if (!isDead[i]) {
             aliveStmts.push_back(move(block->statements[i]));
         }
     }
-    
     block->statements = move(aliveStmts);
 }
 
 void Optimizer::getReadVariables(Expr* expr, set<string>& variables) {
     if (!expr) return;
-    
     if (Variable* var = dynamic_cast<Variable*>(expr)) {
         variables.insert(var->name);
     }
@@ -817,7 +830,6 @@ void Optimizer::getReadVariables(Expr* expr, set<string>& variables) {
 
 void Optimizer::getReadVariablesInStmt(Stmt* stmt, set<string>& variables) {
     if (!stmt) return;
-    
     if (ExprStmt* exprStmt = dynamic_cast<ExprStmt*>(stmt)) {
         getReadVariables(exprStmt->expression.get(), variables);
     }

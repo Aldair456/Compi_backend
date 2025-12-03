@@ -76,7 +76,6 @@ public:
     unique_ptr<Expr> left;
     Token op;
     unique_ptr<Expr> right;
-    
     BinaryOp(unique_ptr<Expr> left, Token op, unique_ptr<Expr> right);
     void accept(Visitor* visitor) override;
 };
@@ -85,7 +84,6 @@ class UnaryOp : public Expr {
 public:
     Token op;
     unique_ptr<Expr> operand;
-    
     UnaryOp(Token op, unique_ptr<Expr> operand);
     void accept(Visitor* visitor) override;
 };
@@ -94,7 +92,6 @@ class CastExpr : public Expr {
 public:
     DataType targetType;
     unique_ptr<Expr> expr;
-    
     CastExpr(DataType targetType, unique_ptr<Expr> expr);
     void accept(Visitor* visitor) override;
 };
@@ -104,7 +101,6 @@ public:
     unique_ptr<Expr> condition;
     unique_ptr<Expr> exprTrue;
     unique_ptr<Expr> exprFalse;
-    
     TernaryExpr(unique_ptr<Expr> condition, unique_ptr<Expr> exprTrue, unique_ptr<Expr> exprFalse);
     void accept(Visitor* visitor) override;
 };
@@ -113,7 +109,6 @@ class CallExpr : public Expr {
 public:
     string functionName;
     vector<unique_ptr<Expr>> arguments;
-    
     CallExpr(string functionName, vector<unique_ptr<Expr>> arguments);
     void accept(Visitor* visitor) override;
 };
@@ -122,7 +117,6 @@ class ArrayAccess : public Expr {
 public:
     string arrayName;
     vector<unique_ptr<Expr>> indices;
-    
     ArrayAccess(string arrayName, vector<unique_ptr<Expr>> indices);
     void accept(Visitor* visitor) override;
 };
@@ -133,7 +127,6 @@ public:
     unique_ptr<Expr> value;
     bool isArrayAssign;
     vector<unique_ptr<Expr>> indices;
-    
     AssignExpr(string varName, unique_ptr<Expr> value);
     AssignExpr(string varName, vector<unique_ptr<Expr>> indices, unique_ptr<Expr> value);
     void accept(Visitor* visitor) override;
@@ -144,11 +137,9 @@ public:
     DataType type;
     string name;
     unique_ptr<Expr> initializer;
-    
     bool isArray;
     vector<int> dimensions;
     vector<unique_ptr<Expr>> arrayInitializer;
-    
     VarDecl(DataType type, string name, unique_ptr<Expr> initializer = nullptr);
     VarDecl(DataType type, string name, vector<int> dimensions);
     void accept(Visitor* visitor) override;
@@ -158,10 +149,8 @@ class AssignStmt : public Stmt {
 public:
     string varName;
     unique_ptr<Expr> value;
-    
     bool isArrayAssign;
     vector<unique_ptr<Expr>> indices;
-    
     AssignStmt(string varName, unique_ptr<Expr> value);
     AssignStmt(string varName, vector<unique_ptr<Expr>> indices, unique_ptr<Expr> value);
     void accept(Visitor* visitor) override;
@@ -170,7 +159,6 @@ public:
 class Block : public Stmt {
 public:
     vector<unique_ptr<Stmt>> statements;
-    
     Block(vector<unique_ptr<Stmt>> statements);
     void accept(Visitor* visitor) override;
 };
@@ -180,7 +168,6 @@ public:
     unique_ptr<Expr> condition;
     unique_ptr<Stmt> thenBranch;
     unique_ptr<Stmt> elseBranch;
-    
     IfStmt(unique_ptr<Expr> condition, unique_ptr<Stmt> thenBranch, unique_ptr<Stmt> elseBranch = nullptr);
     void accept(Visitor* visitor) override;
 };
@@ -189,7 +176,6 @@ class WhileStmt : public Stmt {
 public:
     unique_ptr<Expr> condition;
     unique_ptr<Stmt> body;
-    
     WhileStmt(unique_ptr<Expr> condition, unique_ptr<Stmt> body);
     void accept(Visitor* visitor) override;
 };
@@ -200,8 +186,7 @@ public:
     unique_ptr<Expr> condition;
     unique_ptr<Expr> increment;
     unique_ptr<Stmt> body;
-    
-    ForStmt(unique_ptr<Stmt> initializer, unique_ptr<Expr> condition, 
+    ForStmt(unique_ptr<Stmt> initializer, unique_ptr<Expr> condition,
             unique_ptr<Expr> increment, unique_ptr<Stmt> body);
     void accept(Visitor* visitor) override;
 };
@@ -209,7 +194,6 @@ public:
 class ReturnStmt : public Stmt {
 public:
     unique_ptr<Expr> value;
-    
     ReturnStmt(unique_ptr<Expr> value = nullptr);
     void accept(Visitor* visitor) override;
 };
@@ -217,7 +201,6 @@ public:
 class ExprStmt : public Stmt {
 public:
     unique_ptr<Expr> expression;
-    
     ExprStmt(unique_ptr<Expr> expression);
     void accept(Visitor* visitor) override;
 };
@@ -228,9 +211,8 @@ public:
     string name;
     vector<pair<DataType, string>> parameters;
     unique_ptr<Block> body;
-    
-    FunctionDecl(DataType returnType, string name, 
-                 vector<pair<DataType, string>> parameters, 
+    FunctionDecl(DataType returnType, string name,
+                 vector<pair<DataType, string>> parameters,
                  unique_ptr<Block> body);
     void accept(Visitor* visitor) override;
 };
@@ -238,14 +220,12 @@ public:
 class Program {
 public:
     vector<unique_ptr<Stmt>> statements;
-    
     Program(vector<unique_ptr<Stmt>> statements);
 };
 
 class Visitor {
 public:
     virtual ~Visitor() = default;
-    
     virtual void visitIntLiteral(IntLiteral* node) = 0;
     virtual void visitFloatLiteral(FloatLiteral* node) = 0;
     virtual void visitLongLiteral(LongLiteral* node) = 0;
@@ -258,7 +238,6 @@ public:
     virtual void visitCallExpr(CallExpr* node) = 0;
     virtual void visitArrayAccess(ArrayAccess* node) = 0;
     virtual void visitAssignExpr(AssignExpr* node) = 0;
-    
     virtual void visitVarDecl(VarDecl* node) = 0;
     virtual void visitAssignStmt(AssignStmt* node) = 0;
     virtual void visitBlock(Block* node) = 0;

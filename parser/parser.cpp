@@ -48,10 +48,8 @@ void Parser::error(string message) {
 
 void Parser::synchronize() {
     advance();
-    
     while (!isAtEnd()) {
         if (previous().type == TokenType::SEMICOLON) return;
-        
         switch (peek().type) {
             case TokenType::IF:
             case TokenType::WHILE:
@@ -65,7 +63,6 @@ void Parser::synchronize() {
             default:
                 break;
         }
-        
         advance();
     }
 }
@@ -87,7 +84,6 @@ DataType Parser::tokenToDataType(Token token) {
 
 unique_ptr<Program> Parser::parse() {
     vector<unique_ptr<Stmt>> statements;
-    
     while (!isAtEnd()) {
         try {
             statements.push_back(declaration());
@@ -95,7 +91,6 @@ unique_ptr<Program> Parser::parse() {
             synchronize();
         }
     }
-    
     return make_unique<Program>(move(statements));
 }
 
@@ -103,14 +98,10 @@ unique_ptr<Stmt> Parser::declaration() {
     if (match({TokenType::INT, TokenType::FLOAT, TokenType::LONG, TokenType::UNSIGNED})) {
         Token typeToken = previous();
         DataType type = tokenToDataType(typeToken);
-        
         Token name = consume(TokenType::IDENTIFIER, "Expected variable or function name.");
-        
         if (check(TokenType::LPAREN)) {
             advance();
-            
             vector<pair<DataType, string>> parameters;
-            
             if (!check(TokenType::RPAREN)) {
                 do {
                     Token paramTypeToken = advance();
@@ -119,32 +110,24 @@ unique_ptr<Stmt> Parser::declaration() {
                     parameters.push_back({paramType, paramName.lexeme});
                 } while (match({TokenType::COMMA}));
             }
-            
             consume(TokenType::RPAREN, "Expected ')' after parameters.");
-            
             consume(TokenType::LBRACE, "Expected '{' before function body.");
             unique_ptr<Block> body = block();
-            
             unique_ptr<FunctionDecl> func = make_unique<FunctionDecl>(type, name.lexeme, parameters, move(body));
             func->line = name.line;
             return func;
         }
-        
         if (match({TokenType::LBRACKET})) {
             vector<int> dimensions;
-            
             do {
                 Token sizeToken = consume(TokenType::INT_LITERAL, "Expected array size.");
                 dimensions.push_back(stoi(sizeToken.lexeme));
                 consume(TokenType::RBRACKET, "Expected ']'.");
             } while (match({TokenType::LBRACKET}));
-            
             unique_ptr<VarDecl> varDecl = make_unique<VarDecl>(type, name.lexeme, dimensions);
             varDecl->line = name.line;
-            
             if (match({TokenType::ASSIGN})) {
                 consume(TokenType::LBRACE, "Expected '{' for array initializer.");
-                
                 int braceCount = 1;
                 while (braceCount > 0 && !isAtEnd()) {
                     if (check(TokenType::LBRACE)) braceCount++;
@@ -152,22 +135,18 @@ unique_ptr<Stmt> Parser::declaration() {
                     advance();
                 }
             }
-            
             consume(TokenType::SEMICOLON, "Expected ';' after variable declaration.");
             return varDecl;
         }
-        
         unique_ptr<Expr> initializer = nullptr;
         if (match({TokenType::ASSIGN})) {
             initializer = expression();
         }
-        
         consume(TokenType::SEMICOLON, "Expected ';' after variable declaration.");
         unique_ptr<VarDecl> varDecl = make_unique<VarDecl>(type, name.lexeme, move(initializer));
         varDecl->line = name.line;
         return varDecl;
     }
-    
     return statement();
 }
 
@@ -177,7 +156,6 @@ unique_ptr<Stmt> Parser::statement() {
     if (match({TokenType::FOR})) return forStatement();
     if (match({TokenType::RETURN})) return returnStatement();
     if (match({TokenType::LBRACE})) return block();
-    
     return exprStatement();
 }
 
@@ -186,11 +164,9 @@ unique_ptr<Stmt> Parser::exprStatement() {
         Token name = peek();
         int savedPos = current;
         advance();
-        
         if (match({TokenType::ASSIGN, TokenType::PLUSEQ, TokenType::MINUSEQ})) {
             Token op = previous();
             unique_ptr<Expr> value = expression();
-            
             if (op.type == TokenType::PLUSEQ) {
                 value = make_unique<BinaryOp>(
                     make_unique<Variable>(name.lexeme),
@@ -204,21 +180,17 @@ unique_ptr<Stmt> Parser::exprStatement() {
                     move(value)
                 );
             }
-            
             consume(TokenType::SEMICOLON, "Expected ';' after assignment.");
             unique_ptr<AssignStmt> assign = make_unique<AssignStmt>(name.lexeme, move(value));
             assign->line = name.line;
             return assign;
         }
-        
         if (check(TokenType::LBRACKET)) {
             vector<unique_ptr<Expr>> indices;
-            
             while (match({TokenType::LBRACKET})) {
                 indices.push_back(expression());
                 consume(TokenType::RBRACKET, "Expected ']'.");
             }
-            
             if (match({TokenType::ASSIGN})) {
                 unique_ptr<Expr> value = expression();
                 consume(TokenType::SEMICOLON, "Expected ';' after assignment.");
@@ -227,10 +199,8 @@ unique_ptr<Stmt> Parser::exprStatement() {
                 return assign;
             }
         }
-        
         current = savedPos;
     }
-    
     Token startToken = peek();
     unique_ptr<Expr> expr = expression();
     consume(TokenType::SEMICOLON, "Expected ';' after expression.");
@@ -244,14 +214,11 @@ unique_ptr<Stmt> Parser::ifStatement() {
     consume(TokenType::LPAREN, "Expected '(' after 'if'.");
     unique_ptr<Expr> condition = expression();
     consume(TokenType::RPAREN, "Expected ')' after if condition.");
-    
     unique_ptr<Stmt> thenBranch = statement();
     unique_ptr<Stmt> elseBranch = nullptr;
-    
     if (match({TokenType::ELSE})) {
         elseBranch = statement();
     }
-    
     unique_ptr<IfStmt> ifStmt = make_unique<IfStmt>(move(condition), move(thenBranch), move(elseBranch));
     ifStmt->line = ifToken.line;
     return ifStmt;
@@ -262,9 +229,7 @@ unique_ptr<Stmt> Parser::whileStatement() {
     consume(TokenType::LPAREN, "Expected '(' after 'while'.");
     unique_ptr<Expr> condition = expression();
     consume(TokenType::RPAREN, "Expected ')' after while condition.");
-    
     unique_ptr<Stmt> body = statement();
-    
     unique_ptr<WhileStmt> whileStmt = make_unique<WhileStmt>(move(condition), move(body));
     whileStmt->line = whileToken.line;
     return whileStmt;
@@ -315,11 +280,9 @@ unique_ptr<Stmt> Parser::forStatement() {
 unique_ptr<Stmt> Parser::returnStatement() {
     Token returnToken = previous();
     unique_ptr<Expr> value = nullptr;
-    
     if (!check(TokenType::SEMICOLON)) {
         value = expression();
     }
-    
     consume(TokenType::SEMICOLON, "Expected ';' after return value.");
     unique_ptr<ReturnStmt> retStmt = make_unique<ReturnStmt>(move(value));
     retStmt->line = returnToken.line;
@@ -328,11 +291,9 @@ unique_ptr<Stmt> Parser::returnStatement() {
 
 unique_ptr<Block> Parser::block() {
     vector<unique_ptr<Stmt>> statements;
-    
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
         statements.push_back(declaration());
     }
-    
     consume(TokenType::RBRACE, "Expected '}' after block.");
     return make_unique<Block>(move(statements));
 }
@@ -343,17 +304,14 @@ unique_ptr<Expr> Parser::expression() {
 
 unique_ptr<Expr> Parser::assignment() {
     unique_ptr<Expr> expr = ternary();
-    
     if (match({TokenType::ASSIGN, TokenType::PLUSEQ, TokenType::MINUSEQ})) {
         Token op = previous();
         unique_ptr<Expr> value = assignment();
-        
         Variable* var = dynamic_cast<Variable*>(expr.get());
         if (!var) {
             error("Left side of assignment must be a variable.");
             throw runtime_error("Left side of assignment must be a variable.");
         }
-        
         if (op.type == TokenType::PLUSEQ) {
             value = make_unique<BinaryOp>(
                 make_unique<Variable>(var->name),
@@ -367,12 +325,10 @@ unique_ptr<Expr> Parser::assignment() {
                 move(value)
             );
         }
-        
         unique_ptr<AssignExpr> assignExpr = make_unique<AssignExpr>(var->name, move(value));
         assignExpr->line = op.line;
         return assignExpr;
     }
-    
     if (ArrayAccess* arrAccess = dynamic_cast<ArrayAccess*>(expr.get())) {
         if (match({TokenType::ASSIGN})) {
             Token assignToken = previous();
@@ -382,85 +338,71 @@ unique_ptr<Expr> Parser::assignment() {
             return assignExpr;
         }
     }
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::ternary() {
     unique_ptr<Expr> expr = logicalOr();
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::logicalOr() {
     unique_ptr<Expr> expr = logicalAnd();
-    
     while (match({TokenType::OR})) {
         Token op = previous();
         unique_ptr<Expr> right = logicalAnd();
         expr = make_unique<BinaryOp>(move(expr), op, move(right));
     }
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::logicalAnd() {
     unique_ptr<Expr> expr = equality();
-    
     while (match({TokenType::AND})) {
         Token op = previous();
         unique_ptr<Expr> right = equality();
         expr = make_unique<BinaryOp>(move(expr), op, move(right));
     }
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::equality() {
     unique_ptr<Expr> expr = comparison();
-    
     while (match({TokenType::EQ, TokenType::NE})) {
         Token op = previous();
         unique_ptr<Expr> right = comparison();
         expr = make_unique<BinaryOp>(move(expr), op, move(right));
     }
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::comparison() {
     unique_ptr<Expr> expr = term();
-    
     while (match({TokenType::LT, TokenType::GT, TokenType::LE, TokenType::GE})) {
         Token op = previous();
         unique_ptr<Expr> right = term();
         expr = make_unique<BinaryOp>(move(expr), op, move(right));
     }
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::term() {
     unique_ptr<Expr> expr = factor();
-    
     while (match({TokenType::PLUS, TokenType::MINUS})) {
         Token op = previous();
         unique_ptr<Expr> right = factor();
         expr = make_unique<BinaryOp>(move(expr), op, move(right));
     }
-    
     return expr;
 }
 
 unique_ptr<Expr> Parser::factor() {
     unique_ptr<Expr> expr = unary();
-    
     while (match({TokenType::MULTIPLY, TokenType::DIVIDE, TokenType::MODULO})) {
         Token op = previous();
         unique_ptr<Expr> right = unary();
         expr = make_unique<BinaryOp>(move(expr), op, move(right));
     }
-    
     return expr;
 }
 
@@ -470,7 +412,6 @@ unique_ptr<Expr> Parser::unary() {
         unique_ptr<Expr> right = unary();
         return make_unique<UnaryOp>(op, move(right));
     }
-    
     return cast();
 }
 
@@ -478,11 +419,9 @@ unique_ptr<Expr> Parser::cast() {
     if (check(TokenType::LPAREN)) {
         int savedPos = current;
         advance();
-        
         if (match({TokenType::INT, TokenType::FLOAT, TokenType::LONG, TokenType::UNSIGNED})) {
             Token typeToken = previous();
             DataType targetType = tokenToDataType(typeToken);
-            
             if (match({TokenType::RPAREN})) {
                 unique_ptr<Expr> expr = cast();
                 unique_ptr<CastExpr> castExpr = make_unique<CastExpr>(targetType, move(expr));
@@ -490,33 +429,27 @@ unique_ptr<Expr> Parser::cast() {
                 return castExpr;
             }
         }
-        
         current = savedPos;
     }
-    
     return postfix();
 }
 
 unique_ptr<Expr> Parser::postfix() {
     unique_ptr<Expr> expr = primary();
-    
     if (Variable* var = dynamic_cast<Variable*>(expr.get())) {
         if (check(TokenType::LBRACKET)) {
             string arrayName = var->name;
             vector<unique_ptr<Expr>> indices;
-            
             Token bracketToken = peek();
             while (match({TokenType::LBRACKET})) {
                 indices.push_back(expression());
                 consume(TokenType::RBRACKET, "Expected ']'.");
             }
-            
             unique_ptr<ArrayAccess> arrAccess = make_unique<ArrayAccess>(arrayName, move(indices));
             arrAccess->line = bracketToken.line;
             expr = move(arrAccess);
         }
     }
-    
     while (match({TokenType::INCREMENT, TokenType::DECREMENT})) {
         Token op = previous();
         if (Variable* var = dynamic_cast<Variable*>(expr.get())) {
@@ -529,7 +462,6 @@ unique_ptr<Expr> Parser::postfix() {
                 move(one)
             );
             addExpr->line = op.line;
-            
             unique_ptr<AssignExpr> assignExpr = make_unique<AssignExpr>(var->name, move(addExpr));
             assignExpr->line = op.line;
             expr = move(assignExpr);
@@ -537,7 +469,6 @@ unique_ptr<Expr> Parser::postfix() {
             expr = make_unique<UnaryOp>(op, move(expr));
         }
     }
-    
     return expr;
 }
 
@@ -548,14 +479,12 @@ unique_ptr<Expr> Parser::primary() {
         lit->line = token.line;
         return lit;
     }
-    
     if (match({TokenType::FLOAT_LITERAL})) {
         Token token = previous();
         unique_ptr<FloatLiteral> lit = make_unique<FloatLiteral>(stof(token.lexeme));
         lit->line = token.line;
         return lit;
     }
-    
     if (match({TokenType::LONG_LITERAL})) {
         Token token = previous();
         string lexeme = token.lexeme;
@@ -566,47 +495,38 @@ unique_ptr<Expr> Parser::primary() {
         lit->line = token.line;
         return lit;
     }
-    
     if (match({TokenType::STRING_LITERAL})) {
         Token token = previous();
         unique_ptr<StringLiteral> lit = make_unique<StringLiteral>(token.lexeme);
         lit->line = token.line;
         return lit;
     }
-    
     if (match({TokenType::IDENTIFIER, TokenType::PRINTF})) {
         Token name = previous();
-        
         if (name.type == TokenType::PRINTF) {
             name.lexeme = "printf";
         }
-        
         if (match({TokenType::LPAREN})) {
             vector<unique_ptr<Expr>> arguments;
-            
             if (!check(TokenType::RPAREN)) {
                 do {
                     arguments.push_back(expression());
                 } while (match({TokenType::COMMA}));
             }
-            
             consume(TokenType::RPAREN, "Expected ')' after arguments.");
             unique_ptr<CallExpr> call = make_unique<CallExpr>(name.lexeme, move(arguments));
             call->line = name.line;
             return call;
         }
-        
         unique_ptr<Variable> var = make_unique<Variable>(name.lexeme);
         var->line = name.line;
         return var;
     }
-    
     if (match({TokenType::LPAREN})) {
         unique_ptr<Expr> expr = expression();
         consume(TokenType::RPAREN, "Expected ')' after expression.");
         return expr;
     }
-    
     error("Expected expression.");
     throw runtime_error("Expected expression.");
 }

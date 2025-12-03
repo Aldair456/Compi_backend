@@ -14,7 +14,6 @@ class Parser {
 private:
     vector<Token> tokens;
     int current;
-    
     Token peek();
     Token previous();
     Token advance();
@@ -22,9 +21,7 @@ private:
     bool check(TokenType type);
     bool match(vector<TokenType> types);
     Token consume(TokenType type, string message);
-    
     DataType tokenToDataType(Token token);
-    
     unique_ptr<Stmt> declaration();
     unique_ptr<Stmt> varDeclaration();
     unique_ptr<Stmt> functionDeclaration();
@@ -35,7 +32,6 @@ private:
     unique_ptr<Stmt> forStatement();
     unique_ptr<Stmt> returnStatement();
     unique_ptr<Block> block();
-    
     unique_ptr<Expr> expression();
     unique_ptr<Expr> assignment();
     unique_ptr<Expr> ternary();
@@ -49,7 +45,6 @@ private:
     unique_ptr<Expr> cast();
     unique_ptr<Expr> postfix();
     unique_ptr<Expr> primary();
-    
     void error(string message);
     void synchronize();
 

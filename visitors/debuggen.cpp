@@ -19,7 +19,6 @@ DebugGen::DebugGen() : instructionCounter(0) {}
 
 void DebugGen::setSourceCode(const string& source) {
     sourceCode = source;
-    
     sourceLines.clear();
     stringstream ss(source);
     string line;
@@ -31,8 +30,8 @@ void DebugGen::setSourceCode(const string& source) {
     }
 }
 
-void DebugGen::logInstruction(const string& assembly, int sourceLine, 
-                             const string& varName, 
+void DebugGen::logInstruction(const string& assembly, int sourceLine,
+                             const string& varName,
                              const string& description) {
     DebugInstruction inst;
     inst.id = instructionCounter++;
@@ -43,7 +42,7 @@ void DebugGen::logInstruction(const string& assembly, int sourceLine,
     instructions.push_back(inst);
 }
 
-void DebugGen::logStackVariable(const string& varName, int offset, 
+void DebugGen::logStackVariable(const string& varName, int offset,
                                const string& type, bool isArray, int sourceLine) {
     StackFrameInfo frame;
     frame.varName = varName;
@@ -60,7 +59,6 @@ void DebugGen::clearStackFrame() {
 
 string DebugGen::getJSON() {
     stringstream json;
-    
     json << "{\n";
     json << "  \"sourceLines\": [\n";
     for (size_t i = 0; i < sourceLines.size(); i++) {
@@ -69,7 +67,6 @@ string DebugGen::getJSON() {
         json << "\n";
     }
     json << "  ],\n";
-    
     json << "  \"stackFrame\": [\n";
     for (size_t i = 0; i < stackFrames.size(); i++) {
         const auto& frame = stackFrames[i];
@@ -84,7 +81,6 @@ string DebugGen::getJSON() {
         json << "\n";
     }
     json << "  ],\n";
-    
     json << "  \"instructions\": [\n";
     for (size_t i = 0; i < instructions.size(); i++) {
         const auto& inst = instructions[i];
@@ -105,7 +101,6 @@ string DebugGen::getJSON() {
     }
     json << "  ]\n";
     json << "}\n";
-    
     return json.str();
 }
 
@@ -115,7 +110,6 @@ void DebugGen::generateJSON(const string& filename) {
         cerr << "Error: Could not open debug file " << filename << endl;
         return;
     }
-    
     file << getJSON();
     file.close();
 }

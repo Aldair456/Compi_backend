@@ -1,6 +1,3 @@
-"""
-Servicio principal que orquesta la compilación y emulación
-"""
 import traceback
 from typing import Dict, Any
 
@@ -12,73 +9,43 @@ from ..utils.request_parser import RequestParser
 
 
 class CompilationService:
-    """Servicio principal que orquesta la compilación y emulación"""
-    
     def __init__(self):
         self.compiler = CompilerManager()
         self.response_builder = ResponseBuilder()
         self.request_parser = RequestParser()
-    
     def process_request(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Procesa un request completo: compila, genera debug y emula si es necesario
-        
-        Args:
-            event: Evento de Lambda
-            
-        Returns:
-            Respuesta HTTP formateada
-        """
         try:
-            # Parsear y validar request
             source_code, debug_mode, optimize_mode = self.request_parser.validate_request(event)
-            
             print(f"Received source code ({len(source_code)} chars)")
             print(f"Debug mode: {debug_mode}, Optimize mode: {optimize_mode}")
-            
-            # Preparar compilador
             self.compiler.ensure_compiler_ready()
-            
-            # Compilar
             success, stdout, stderr = self.compiler.compile(
-                source_code, 
-                debug_mode, 
+                source_code,
+                debug_mode,
                 optimize_mode
             )
-            
             if not success:
                 return self.response_builder.compilation_failed(stderr or '', stdout or '')
-            
-            # Leer outputs
             asm_content = self.compiler.read_assembly_output()
             debug_data = self.compiler.read_debug_output(source_code)
-            
-            # Emular si está en modo debug
             execution_snapshots = []
             if debug_mode:
                 execution_snapshots = self._run_emulation(debug_data)
-            
-            # Construir respuesta
             return self._build_success_response(
-                asm_content, 
-                debug_data, 
+                asm_content,
+                debug_data,
                 execution_snapshots
             )
-            
         except ValueError as e:
             return self.response_builder.error(str(e), status_code=400)
-        
         except TimeoutError as e:
             return self.response_builder.timeout_error(30)
-        
         except Exception as e:
             error_trace = traceback.format_exc()
             print(f"Error: {str(e)}")
             print(error_trace)
             return self.response_builder.internal_error(e, error_trace)
-    
     def _run_emulation(self, debug_data: Dict[str, Any]) -> list:
-        """Ejecuta la emulación y retorna los snapshots"""
         try:
             print("Starting x86-64 emulation...")
             execution_snapshots = emulate_from_debug(debug_data, max_steps=MAX_EMULATION_STEPS)
@@ -88,12 +55,9 @@ class CompilationService:
             error_trace = traceback.format_exc()
             print(f"Emulation failed: {str(e)}")
             print(error_trace)
-            # Continuar sin snapshots si falla la emulación
             return []
-    
     def _build_success_response(self, asm_content: str, debug_data: Dict[str, Any],
                                 execution_snapshots: list) -> Dict[str, Any]:
-        """Construye la respuesta exitosa con todos los datos"""
         response_data = {
             'success': True,
             'assembly': asm_content,
@@ -105,10 +69,8 @@ class CompilationService:
                 'sourceLines': len(debug_data.get('sourceLines', []))
             }
         }
-        
         if execution_snapshots:
             response_data['execution'] = execution_snapshots
             response_data['stats']['executionSteps'] = len(execution_snapshots)
-        
         return self.response_builder.success(response_data)
 

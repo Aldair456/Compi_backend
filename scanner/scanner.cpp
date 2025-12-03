@@ -24,7 +24,6 @@ vector<Token> Scanner::scanTokens() {
         start = current;
         scanToken();
     }
-    
     tokens.push_back(Token(TokenType::END_OF_FILE, "", line, column));
     return tokens;
 }
@@ -51,7 +50,6 @@ char Scanner::peekNext() {
 bool Scanner::match(char expected) {
     if (isAtEnd()) return false;
     if (source[current] != expected) return false;
-    
     current++;
     column++;
     return true;
@@ -68,18 +66,15 @@ void Scanner::addToken(TokenType type, string lexeme) {
 
 void Scanner::scanToken() {
     char c = advance();
-    
     switch (c) {
         case ' ':
         case '\r':
         case '\t':
             break;
-            
         case '\n':
             line++;
             column = 1;
             break;
-            
         case '(': addToken(TokenType::LPAREN); break;
         case ')': addToken(TokenType::RPAREN); break;
         case '{': addToken(TokenType::LBRACE); break;
@@ -89,7 +84,6 @@ void Scanner::scanToken() {
         case ';': addToken(TokenType::SEMICOLON); break;
         case ',': addToken(TokenType::COMMA); break;
         case '%': addToken(TokenType::MODULO); break;
-        
         case '+':
             if (match('+')) {
                 addToken(TokenType::INCREMENT);
@@ -99,7 +93,6 @@ void Scanner::scanToken() {
                 addToken(TokenType::PLUS);
             }
             break;
-            
         case '-':
             if (match('-')) {
                 addToken(TokenType::DECREMENT);
@@ -109,11 +102,9 @@ void Scanner::scanToken() {
                 addToken(TokenType::MINUS);
             }
             break;
-            
         case '*':
             addToken(TokenType::MULTIPLY);
             break;
-            
         case '/':
             if (match('/')) {
                 while (peek() != '\n' && !isAtEnd()) advance();
@@ -134,11 +125,9 @@ void Scanner::scanToken() {
                 addToken(TokenType::DIVIDE);
             }
             break;
-            
         case '=':
             addToken(match('=') ? TokenType::EQ : TokenType::ASSIGN);
             break;
-            
         case '!':
             if (match('=')) {
                 addToken(TokenType::NE);
@@ -146,35 +135,28 @@ void Scanner::scanToken() {
                 addToken(TokenType::NOT);
             }
             break;
-            
         case '<':
             addToken(match('=') ? TokenType::LE : TokenType::LT);
             break;
-            
         case '>':
             addToken(match('=') ? TokenType::GE : TokenType::GT);
             break;
-            
         case '&':
             if (match('&')) {
                 addToken(TokenType::AND);
             }
             break;
-            
         case '|':
             if (match('|')) {
                 addToken(TokenType::OR);
             }
             break;
-            
         case '"':
             scanString();
             break;
-            
         case '#':
             while (peek() != '\n' && !isAtEnd()) advance();
             break;
-            
         default:
             if (isDigit(c)) {
                 number();
@@ -189,36 +171,28 @@ void Scanner::scanToken() {
 
 void Scanner::identifier() {
     while (isAlphaNumeric(peek())) advance();
-    
     string text = source.substr(start, current - start);
-    
     TokenType type = TokenType::IDENTIFIER;
     if (keywords.find(text) != keywords.end()) {
         type = keywords[text];
     }
-    
     addToken(type, text);
 }
 
 void Scanner::number() {
     bool isFloat = false;
     bool isLong = false;
-    
     while (isDigit(peek())) advance();
-    
     if (peek() == '.' && isDigit(peekNext())) {
         isFloat = true;
         advance();
         while (isDigit(peek())) advance();
     }
-    
     if (peek() == 'L' || peek() == 'l') {
         isLong = true;
         advance();
     }
-    
     string text = source.substr(start, current - start);
-    
     if (isFloat) {
         addToken(TokenType::FLOAT_LITERAL, text);
     } else if (isLong) {
@@ -236,13 +210,10 @@ void Scanner::scanString() {
         }
         advance();
     }
-    
     if (isAtEnd()) {
         return;
     }
-    
     advance();
-    
     string value = source.substr(start + 1, current - start - 2);
     addToken(TokenType::STRING_LITERAL, value);
 }

@@ -31,23 +31,16 @@ private:
     string sourceCode;
     vector<string> sourceLines;
     vector<StackFrameInfo> stackFrames;
-    
 public:
     DebugGen();
-    
     void setSourceCode(const string& source);
-    
-    void logInstruction(const string& assembly, int sourceLine, 
-                       const string& varName = "", 
+    void logInstruction(const string& assembly, int sourceLine,
+                       const string& varName = "",
                        const string& description = "");
-    
-    void logStackVariable(const string& varName, int offset, 
+    void logStackVariable(const string& varName, int offset,
                          const string& type, bool isArray, int sourceLine);
-    
     void clearStackFrame();
-    
     void generateJSON(const string& filename);
-    
     string getJSON();
 };
 
