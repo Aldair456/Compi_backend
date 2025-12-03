@@ -29,19 +29,21 @@ class CompilerManager:
         print(f"Saved to {input_file}")
         return input_file
     def build_compiler_command(self, input_file: str, debug_mode: bool,
-                               optimize_mode: bool) -> list:
+                               optimize_mode: bool, visualize_mode: bool = False) -> list:
         cmd = [self.compiler_path, input_file, os.path.join(WORK_DIR, OUTPUT_ASM)]
-        if debug_mode:
+        if visualize_mode:
+            cmd.append('--debug-visualize')
+        elif debug_mode:
             cmd.append('--debug')
         if optimize_mode:
             cmd.append('--optimize')
             print("Optimization enabled - line-by-line debug may be affected")
         return cmd
     def compile(self, source_code: str, debug_mode: bool,
-                optimize_mode: bool) -> Tuple[bool, Optional[str], Optional[str]]:
+                optimize_mode: bool, visualize_mode: bool = False) -> Tuple[bool, Optional[str], Optional[str]]:
         self.prepare_work_directory()
         input_file = self.save_source_code(source_code)
-        cmd = self.build_compiler_command(input_file, debug_mode, optimize_mode)
+        cmd = self.build_compiler_command(input_file, debug_mode, optimize_mode, visualize_mode)
         print(f"Executing: {' '.join(cmd)}")
         try:
             result = subprocess.run(

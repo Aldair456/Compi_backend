@@ -17,14 +17,15 @@ class RequestParser:
             raise ValueError('No source code provided')
         return source_code
     @staticmethod
-    def extract_flags(body: Dict[str, Any]) -> Tuple[bool, bool]:
+    def extract_flags(body: Dict[str, Any]) -> Tuple[bool, bool, bool]:
         debug_mode = body.get('debug', False)
         optimize_mode = body.get('optimize', False)
-        return debug_mode, optimize_mode
+        visualize_mode = body.get('visualize', False)
+        return debug_mode, optimize_mode, visualize_mode
     @staticmethod
-    def validate_request(event: Dict[str, Any]) -> Tuple[str, bool, bool]:
+    def validate_request(event: Dict[str, Any]) -> Tuple[str, bool, bool, bool]:
         body = RequestParser.parse_body(event)
         source_code = RequestParser.extract_source_code(body)
-        debug_mode, optimize_mode = RequestParser.extract_flags(body)
-        return source_code, debug_mode, optimize_mode
+        debug_mode, optimize_mode, visualize_mode = RequestParser.extract_flags(body)
+        return source_code, debug_mode, optimize_mode, visualize_mode
 
