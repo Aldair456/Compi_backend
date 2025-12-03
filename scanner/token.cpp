@@ -56,6 +56,9 @@ string Token::typeToString(TokenType type) {
         case TokenType::STRING_LITERAL: return "STRING_LITERAL";
         case TokenType::IDENTIFIER: return "IDENTIFIER";
         case TokenType::END_OF_FILE: return "END_OF_FILE";
+
+        case TokenType::TYPEDEF: return "TYPEDEF";
+
         case TokenType::UNKNOWN: return "UNKNOWN";
         default: return "UNDEFINED";
     }

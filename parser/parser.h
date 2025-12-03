@@ -7,6 +7,7 @@
 #include <vector>
 #include <memory>
 #include <stdexcept>
+#include <map>
 
 using namespace std;
 
@@ -47,6 +48,13 @@ private:
     unique_ptr<Expr> primary();
     void error(string message);
     void synchronize();
+
+    // Symbol Table
+    vector<map<string, DataType>> scopes;
+    void enterScope();
+    void exitScope();
+    void declareVariable(string name, DataType type);
+    DataType getVariableType(string name);
 
 public:
     Parser(vector<Token> tokens);

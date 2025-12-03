@@ -1,7 +1,10 @@
 #include "parser.h"
 #include <iostream>
 
-Parser::Parser(vector<Token> tokens) : tokens(tokens), current(0) {}
+Parser::Parser(vector<Token> tokens) : tokens(tokens), current(0) {
+    // Initialize global scope
+    scopes.push_back(map<string, DataType>());
+}
 
 Token Parser::peek() {
     return tokens[current];
@@ -67,6 +70,31 @@ void Parser::synchronize() {
     }
 }
 
+// Symbol Table Management
+void Parser::enterScope() {
+    scopes.push_back(map<string, DataType>());
+}
+
+void Parser::exitScope() {
+    if (scopes.size() > 1) {
+        scopes.pop_back();
+    }
+}
+
+void Parser::declareVariable(string name, DataType type) {
+    if (scopes.empty()) return;
+    scopes.back()[name] = type;
+}
+
+DataType Parser::getVariableType(string name) {
+    for (int i = scopes.size() - 1; i >= 0; i--) {
+        if (scopes[i].find(name) != scopes[i].end()) {
+            return scopes[i][name];
+        }
+    }
+    return DataType::UNKNOWN;
+}
+
 DataType Parser::tokenToDataType(Token token) {
     switch(token.type) {
         case TokenType::INT: return DataType::INT;
@@ -112,7 +140,17 @@ unique_ptr<Stmt> Parser::declaration() {
             }
             consume(TokenType::RPAREN, "Expected ')' after parameters.");
             consume(TokenType::LBRACE, "Expected '{' before function body.");
+            
+            // Function scope for parameters
+            enterScope();
+            for (auto& param : parameters) {
+                declareVariable(param.second, param.first);
+            }
+            
             unique_ptr<Block> body = block();
+            
+            exitScope(); // Exit function scope
+            
             unique_ptr<FunctionDecl> func = make_unique<FunctionDecl>(type, name.lexeme, parameters, move(body));
             func->line = name.line;
             return func;
@@ -145,6 +183,9 @@ unique_ptr<Stmt> Parser::declaration() {
         consume(TokenType::SEMICOLON, "Expected ';' after variable declaration.");
         unique_ptr<VarDecl> varDecl = make_unique<VarDecl>(type, name.lexeme, move(initializer));
         varDecl->line = name.line;
+        
+        declareVariable(name.lexeme, type);
+        
         return varDecl;
     }
     return statement();
@@ -290,11 +331,13 @@ unique_ptr<Stmt> Parser::returnStatement() {
 }
 
 unique_ptr<Block> Parser::block() {
+    enterScope();
     vector<unique_ptr<Stmt>> statements;
     while (!check(TokenType::RBRACE) && !isAtEnd()) {
         statements.push_back(declaration());
     }
     consume(TokenType::RBRACE, "Expected '}' after block.");
+    exitScope();
     return make_unique<Block>(move(statements));
 }
 
@@ -318,6 +361,8 @@ unique_ptr<Expr> Parser::assignment() {
                 Token(TokenType::PLUS, "+", op.line, op.column),
                 move(value)
             );
+            // Re-infer type for the binary op (simplified, ideally reuse term logic or check types here)
+            // For now, let's assume the binary op might need casting in the next step
         } else if (op.type == TokenType::MINUSEQ) {
             value = make_unique<BinaryOp>(
                 make_unique<Variable>(var->name),
@@ -325,6 +370,17 @@ unique_ptr<Expr> Parser::assignment() {
                 move(value)
             );
         }
+        
+        // Type checking and casting for assignment
+        DataType varType = getVariableType(var->name);
+        DataType valType = value->inferredType;
+        
+        if (varType == DataType::FLOAT && valType == DataType::INT) {
+            value = make_unique<CastExpr>(DataType::FLOAT, move(value));
+        } else if (varType == DataType::INT && valType == DataType::FLOAT) {
+            value = make_unique<CastExpr>(DataType::INT, move(value));
+        }
+        
         unique_ptr<AssignExpr> assignExpr = make_unique<AssignExpr>(var->name, move(value));
         assignExpr->line = op.line;
         return assignExpr;
@@ -333,6 +389,16 @@ unique_ptr<Expr> Parser::assignment() {
         if (match({TokenType::ASSIGN})) {
             Token assignToken = previous();
             unique_ptr<Expr> value = assignment();
+            
+            DataType arrType = getVariableType(arrAccess->arrayName);
+            DataType valType = value->inferredType;
+            
+            if (arrType == DataType::FLOAT && valType == DataType::INT) {
+                value = make_unique<CastExpr>(DataType::FLOAT, move(value));
+            } else if (arrType == DataType::INT && valType == DataType::FLOAT) {
+                value = make_unique<CastExpr>(DataType::INT, move(value));
+            }
+            
             unique_ptr<AssignExpr> assignExpr = make_unique<AssignExpr>(arrAccess->arrayName, move(arrAccess->indices), move(value));
             assignExpr->line = assignToken.line;
             return assignExpr;
@@ -371,8 +437,22 @@ unique_ptr<Expr> Parser::equality() {
     while (match({TokenType::EQ, TokenType::NE})) {
         Token op = previous();
         unique_ptr<Expr> right = comparison();
-        expr = make_unique<BinaryOp>(move(expr), op, move(right));
+        
+        DataType leftType = expr->inferredType;
+        DataType rightType = right->inferredType;
+        
+        if (leftType == DataType::INT && rightType == DataType::FLOAT) {
+            expr = make_unique<CastExpr>(DataType::FLOAT, move(expr));
+        } else if (leftType == DataType::FLOAT && rightType == DataType::INT) {
+            right = make_unique<CastExpr>(DataType::FLOAT, move(right));
+        }
+        
+        auto binaryOp = make_unique<BinaryOp>(move(expr), op, move(right));
+        binaryOp->inferredType = DataType::INT; // Result is boolean (int)
+        binaryOp->line = op.line;
+        expr = move(binaryOp);
     }
+    
     return expr;
 }
 
@@ -381,8 +461,22 @@ unique_ptr<Expr> Parser::comparison() {
     while (match({TokenType::LT, TokenType::GT, TokenType::LE, TokenType::GE})) {
         Token op = previous();
         unique_ptr<Expr> right = term();
-        expr = make_unique<BinaryOp>(move(expr), op, move(right));
+        
+        DataType leftType = expr->inferredType;
+        DataType rightType = right->inferredType;
+        
+        if (leftType == DataType::INT && rightType == DataType::FLOAT) {
+            expr = make_unique<CastExpr>(DataType::FLOAT, move(expr));
+        } else if (leftType == DataType::FLOAT && rightType == DataType::INT) {
+            right = make_unique<CastExpr>(DataType::FLOAT, move(right));
+        }
+        
+        auto binaryOp = make_unique<BinaryOp>(move(expr), op, move(right));
+        binaryOp->inferredType = DataType::INT; // Result is boolean (int)
+        binaryOp->line = op.line;
+        expr = move(binaryOp);
     }
+    
     return expr;
 }
 
@@ -391,8 +485,27 @@ unique_ptr<Expr> Parser::term() {
     while (match({TokenType::PLUS, TokenType::MINUS})) {
         Token op = previous();
         unique_ptr<Expr> right = factor();
-        expr = make_unique<BinaryOp>(move(expr), op, move(right));
+        
+        DataType leftType = expr->inferredType;
+        DataType rightType = right->inferredType;
+        DataType resultType = leftType;
+        
+        if (leftType == DataType::INT && rightType == DataType::FLOAT) {
+            expr = make_unique<CastExpr>(DataType::FLOAT, move(expr));
+            resultType = DataType::FLOAT;
+        } else if (leftType == DataType::FLOAT && rightType == DataType::INT) {
+            right = make_unique<CastExpr>(DataType::FLOAT, move(right));
+            resultType = DataType::FLOAT;
+        } else if (leftType == DataType::FLOAT || rightType == DataType::FLOAT) {
+            resultType = DataType::FLOAT;
+        }
+        
+        auto binaryOp = make_unique<BinaryOp>(move(expr), op, move(right));
+        binaryOp->inferredType = resultType;
+        binaryOp->line = op.line;
+        expr = move(binaryOp);
     }
+    
     return expr;
 }
 
@@ -401,8 +514,27 @@ unique_ptr<Expr> Parser::factor() {
     while (match({TokenType::MULTIPLY, TokenType::DIVIDE, TokenType::MODULO})) {
         Token op = previous();
         unique_ptr<Expr> right = unary();
-        expr = make_unique<BinaryOp>(move(expr), op, move(right));
+        
+        DataType leftType = expr->inferredType;
+        DataType rightType = right->inferredType;
+        DataType resultType = leftType;
+        
+        if (leftType == DataType::INT && rightType == DataType::FLOAT) {
+            expr = make_unique<CastExpr>(DataType::FLOAT, move(expr));
+            resultType = DataType::FLOAT;
+        } else if (leftType == DataType::FLOAT && rightType == DataType::INT) {
+            right = make_unique<CastExpr>(DataType::FLOAT, move(right));
+            resultType = DataType::FLOAT;
+        } else if (leftType == DataType::FLOAT || rightType == DataType::FLOAT) {
+            resultType = DataType::FLOAT;
+        }
+        
+        auto binaryOp = make_unique<BinaryOp>(move(expr), op, move(right));
+        binaryOp->inferredType = resultType;
+        binaryOp->line = op.line;
+        expr = move(binaryOp);
     }
+    
     return expr;
 }
 
@@ -520,6 +652,7 @@ unique_ptr<Expr> Parser::primary() {
         }
         unique_ptr<Variable> var = make_unique<Variable>(name.lexeme);
         var->line = name.line;
+        var->inferredType = getVariableType(name.lexeme);
         return var;
     }
     if (match({TokenType::LPAREN})) {

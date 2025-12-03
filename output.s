@@ -12,16 +12,44 @@
 main:
     pushq %rbp
     movq %rsp, %rbp
-while_start_3:
+    subq $16, %rsp
     movl $0, %eax
+    movl %eax, -4(%rbp)
+    movl $0, %eax
+    movl %eax, -8(%rbp)
+while_start_3:
+    movl $5, %eax
+    pushq %rax
+    movl -8(%rbp), %eax
+    cltq
+    popq %rbx
+    cmpl %ebx, %eax
+    setl %al
+    movzbq %al, %rax
     testq %rax, %rax
     jz while_end_4
+    movl -8(%rbp), %eax
+    cltq
+    pushq %rax
+    movl -4(%rbp), %eax
+    cltq
+    popq %rbx
+    addl %ebx, %eax
+    movl %eax, -4(%rbp)
+    movl $1, %eax
+    pushq %rax
+    movl -8(%rbp), %eax
+    cltq
+    popq %rbx
+    addl %ebx, %eax
+    movl %eax, -8(%rbp)
     jmp while_start_3
 while_end_4:
     leaq str_const_5(%rip), %rax
     movq %rax, %rdi
     pushq %rdi
-    movl $0, %eax
+    movl -4(%rbp), %eax
+    cltq
     movq %rax, %rsi
     popq %rdi
     xorq %rax, %rax

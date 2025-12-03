@@ -25,6 +25,7 @@ enum class TokenType {
     STRING_LITERAL,
     IDENTIFIER,
     END_OF_FILE,
+    TYPEDEF,
     UNKNOWN
 };
 
