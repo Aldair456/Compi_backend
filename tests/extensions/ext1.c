@@ -10,7 +10,7 @@ int main() {
     y = 2.86;
     sum = x + y;
     
-    printf("%.2f\n", sum);
+    printf("%.2f\n", sum);//6.00
     
     return 0;
 }

@@ -8,7 +8,7 @@ int main() {
     x = 100;
     y = 50;
     
-    printf("%u\n", x + y);
+    printf("%u\n", x + y);//150
     
     return 0;
 }

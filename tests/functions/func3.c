@@ -16,8 +16,8 @@ int main() {
     x = 20;
     y = 8;
     
-    printf("%d\n", suma(x, y));
-    printf("%d\n", resta(x, y));
+    printf("%d\n", suma(x, y));//28
+    printf("%d\n", resta(x, y));//12
     
     return 0;
 }

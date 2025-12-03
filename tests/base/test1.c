@@ -9,9 +9,9 @@ int main() {
     z = 45;
     x = 11;
     
-    printf("%d\n", x);
-    printf("%d\n", y);
-    printf("%ld\n", z);
+    printf("%d\n", x);//11
+    printf("%d\n", y);//0
+    printf("%ld\n", z);//45
     
     return 0;
 }

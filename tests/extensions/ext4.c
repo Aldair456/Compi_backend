@@ -12,7 +12,7 @@ int main() {
     // Conversión explícita: (float)x
     z = (float)x + y;
     
-    printf("%.2f\n", z);
+    printf("%.2f\n", z);//7.5
     
     return 0;
 }

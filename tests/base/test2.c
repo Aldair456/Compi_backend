@@ -15,9 +15,9 @@ int main() {
     diff = a - b;
     prod = a * b;
     
-    printf("%d\n", sum);
-    printf("%d\n", diff);
-    printf("%d\n", prod);
+    printf("%d\n", sum);//15
+    printf("%d\n", diff);//5
+    printf("%d\n", prod);//50
     
     return 0;
 }
