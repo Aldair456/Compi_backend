@@ -240,6 +240,8 @@ public:
     vector<unique_ptr<Stmt>> statements;
     
     Program(vector<unique_ptr<Stmt>> statements);
+    void accept(Visitor* visitor);
+    virtual ~Program() = default;
 };
 
 class Visitor {

@@ -1,0 +1,164 @@
+{
+  "sourceLines": [
+    "// Test 4: While loop",
+    "#include <stdio.h>",
+    "",
+    "int main() {",
+    "    int x;",
+    "    int i;",
+    "    ",
+    "    x = 0;",
+    "    i = 0;",
+    "    ",
+    "    while (i < 5) {",
+    "        x = x + i;",
+    "        i = i + 1;",
+    "    }",
+    "    ",
+    "    printf(\"%d\\n\", x);",
+    "    ",
+    "    return 0;",
+    "}",
+    ""
+  ],
+  "stackFrame": [
+  ],
+  "instructions": [
+    {
+      "id": 0,
+      "assembly": "main:",
+      "sourceLine": 4,
+      "description": "label",
+      "line": 4
+    },
+    {
+      "id": 1,
+      "assembly": "pushq %rbp",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 2,
+      "assembly": "movq %rsp, %rbp",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 3,
+      "assembly": "while_start_3:",
+      "sourceLine": 11,
+      "description": "label",
+      "line": 11
+    },
+    {
+      "id": 4,
+      "assembly": "movl $0, %eax",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 5,
+      "assembly": "testq %rax, %rax",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 6,
+      "assembly": "jz while_end_4",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 7,
+      "assembly": "jmp while_start_3",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 8,
+      "assembly": "while_end_4:",
+      "sourceLine": 11,
+      "description": "label",
+      "line": 11
+    },
+    {
+      "id": 9,
+      "assembly": "leaq str_const_5(%rip), %rax",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 10,
+      "assembly": "movq %rax, %rdi",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 11,
+      "assembly": "pushq %rdi",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 12,
+      "assembly": "movl $0, %eax",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 13,
+      "assembly": "movq %rax, %rsi",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 14,
+      "assembly": "popq %rdi",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 15,
+      "assembly": "xorq %rax, %rax",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 16,
+      "assembly": "call printf@PLT",
+      "sourceLine": 16,
+      "line": 16
+    },
+    {
+      "id": 17,
+      "assembly": "movl $0, %eax",
+      "sourceLine": 18,
+      "line": 18
+    },
+    {
+      "id": 18,
+      "assembly": "jmp .end_main",
+      "sourceLine": 18,
+      "line": 18
+    },
+    {
+      "id": 19,
+      "assembly": ".end_main:",
+      "sourceLine": 18,
+      "description": "label",
+      "line": 18
+    },
+    {
+      "id": 20,
+      "assembly": "leave",
+      "sourceLine": 18,
+      "line": 18
+    },
+    {
+      "id": 21,
+      "assembly": "ret",
+      "sourceLine": 18,
+      "line": 18
+    }
+  ]
+}

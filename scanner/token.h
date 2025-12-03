@@ -31,6 +31,7 @@ enum class TokenType {
     
     IDENTIFIER,
     END_OF_FILE,
+    TYPEDEF,
     UNKNOWN
 };
 

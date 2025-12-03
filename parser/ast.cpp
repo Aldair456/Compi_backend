@@ -178,3 +178,4 @@ void FunctionDecl::accept(Visitor* visitor) {
 
 Program::Program(vector<unique_ptr<Stmt>> statements)
     : statements(move(statements)) {}
+
