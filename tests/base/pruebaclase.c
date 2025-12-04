@@ -1,65 +1,39 @@
+// test_typedef.c
 #include <stdio.h>
 
-// Función auxiliar para valor absoluto (Float)
-float absoluto(float n) {
-    if (n < 0.0) {
-        return 0.0 - n; // Truco para negar float: 0.0 - x
-    }
-    return n;
-}
+// Definición de Alias
+typedef int Entero;
+typedef float Real;
+typedef long Gigante;
 
-// Algoritmo para calcular Raíz Cuadrada
-float raiz_cuadrada(float n) {
-    float x;
-    float nuevo_x;
-    float error;
-    int iter;
-
-    // Suposición inicial: la mitad del número
-    x = n / 2.0;
-    iter = 0;
-
-    // Iteramos hasta encontrar la precisión o máximo 20 veces
-    while (iter < 20) {
-        // Fórmula de Newton: x = 0.5 * (x + n/x)
-        nuevo_x = 0.5 * (x + n / x);
-
-        // Calculamos cuánto cambió (error)
-        error = absoluto(nuevo_x - x);
-
-        // Si el error es muy pequeño (0.0001), ya terminamos
-        if (error < 0.0001) {
-            // Truco: Forzamos la salida del while haciendo iter grande
-            iter = 100;
-        } else {
-            // Seguimos refinando
-            x = nuevo_x;
-            iter = iter + 1;
-        }
-    }
-    return x;
+// Funciones usando Alias
+Entero sumar(Entero a, Entero b) {
+    return a + b;
 }
 
 int main() {
-    float num;
-    float res;
+    Entero x;
+    Entero y;
+    Real radio;
+    Gigante distancia;
 
-    printf("=== CALCULO DE RAIZ CUADRADA (NEWTON) ===\n");
+    printf("=== TEST 2: TYPEDEF ===\n");
 
-    // Caso 1: Raíz exacta
-    num = 16.0;
-    res = raiz_cuadrada(num);
-    printf("Raiz de %.2f = %.4f\n", num, res);
+    // Usando alias como si fueran tipos nativos
+    x = 10;
+    y = 20;
+    printf("Suma de Enteros: %d\n", sumar(x, y));
 
-    // Caso 2: Raíz irracional (sqrt(2))
-    num = 2.0;
-    res = raiz_cuadrada(num);
-    printf("Raiz de %.2f = %.4f\n", num, res);
+    radio = 3.14159;
+    printf("Valor Real (Float): %.4f\n", radio);
 
-    // Caso 3: Número grande
-    num = 100.0;
-    res = raiz_cuadrada(num);
-    printf("Raiz de %.2f = %.4f\n", num, res);
+    distancia = 9000000000;
+    printf("Valor Gigante (Long): %ld\n", distancia);
+
+    // Mezcla de alias y tipos nativos (deben ser compatibles)
+    int z;
+    z = x + 5;
+    printf("Alias + Nativo: %d\n", z);
 
     return 0;
 }

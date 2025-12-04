@@ -17,6 +17,7 @@ void Scanner::initKeywords() {
     keywords["return"] = TokenType::RETURN;
     keywords["printf"] = TokenType::PRINTF;
     keywords["include"] = TokenType::INCLUDE;
+    keywords["typedef"] = TokenType::TYPEDEF;
 }
 
 vector<Token> Scanner::scanTokens() {
