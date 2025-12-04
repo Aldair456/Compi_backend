@@ -208,6 +208,9 @@ class CompilationService:
                     'label': stack_item.get('variable', '')
                 })
             
+            # Obtener stackFrame del snapshot
+            stack_frame = snapshot.get('stackFrame', {})
+            
             step_info = {
                 'step': i,
                 'c_line': c_line,
@@ -216,7 +219,8 @@ class CompilationService:
                 'asm_instruction': asm_instruction,
                 'registers': step_registers,
                 'stack': step_stack,
-                'variables': variables
+                'variables': variables,
+                'stackFrame': stack_frame
             }
             
             steps_data.append(step_info)
