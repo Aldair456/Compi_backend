@@ -1,10 +1,13 @@
 #include "codegen.h"
 #include <iostream>
+#include <sstream>
 #include <set>
 #include <functional>
 
 CodeGen::CodeGen() : stackOffset(0), labelCounter(0), lastExprWasFloat(false),
-                      debugGen(nullptr), currentSourceLine(0) {}
+                      debugGen(nullptr), currentSourceLine(0) {
+    sourceLines.clear();
+}
 
 string CodeGen::getOutput() {
     return output.str();
@@ -22,20 +25,43 @@ void CodeGen::setSourceLine(int line) {
     currentSourceLine = line;
 }
 
+void CodeGen::setSourceCode(const string& code) {
+    sourceCode = code;
+    sourceLines.clear();
+    stringstream ss(code);
+    string line;
+    while (getline(ss, line)) {
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+        sourceLines.push_back(line);
+    }
+}
+
+string CodeGen::getSourceLineCode(int line) {
+    if (line > 0 && line <= (int)sourceLines.size()) {
+        string code = sourceLines[line - 1];
+        size_t pos = code.find_first_not_of(" \t");
+        if (pos != string::npos) {
+            code = code.substr(pos);
+        }
+        return code;
+    }
+    return "";
+}
+
 void CodeGen::generar(string code, const string& varName, const string& description) {
     output << "    " << code << "\n";
-    int line = currentSourceLine > 0 ? currentSourceLine : 1;
-    if (debugGen) {
-        debugGen->logInstruction(code, line, varName, description);
+
+    if (debugGen && isExecutableInstruction(code)) {
+        int line = currentSourceLine > 0 ? currentSourceLine : 1;
+        string cCode = getSourceLineCode(line);
+        debugGen->logInstruction(code, line, varName, description, cCode);
     }
 }
 
 void CodeGen::generarLabel(string label) {
     output << label << ":\n";
-    int line = currentSourceLine > 0 ? currentSourceLine : 0;
-    if (debugGen) {
-        debugGen->logInstruction(label + ":", line, "", "label");
-    }
 }
 
 string CodeGen::allocReg(DataType type) {
@@ -100,7 +126,10 @@ void CodeGen::generate(Program* program) {
     output << "    fmt_int: .string \"%d\\n\"\n";
     output << "    fmt_float: .string \"%.2f\\n\"\n";
     output << "    fmt_long: .string \"%ld\\n\"\n";
-    output << ".section .bss\n\n";
+
+    output << ".section .bss\n";
+    output << "\n";
+
     output << ".section .text\n";
     output << "    .extern printf\n";
     output << "    .global main\n\n";
@@ -183,22 +212,15 @@ void CodeGen::visitVariable(Variable* node) {
         else if (var.type == DataType::LONG) {
             generar("movq -" + to_string(var.offset) + "(%rbp), %rax");
             lastExprWasFloat = false;
-        }
-        else if (var.type == DataType::UNSIGNED_INT) {
-            // Unsigned: Cargar y asegurar ceros en la parte alta (Zero Extension)
-            // movl escribe 32 bits y automáticamente limpia los 32 superiores de RAX en x86-64
+        } else {
+            // INT: Solo cargar en eax (cltq solo si se necesita rax para índices/punteros/64 bits)
             generar("movl -" + to_string(var.offset) + "(%rbp), %eax");
-            lastExprWasFloat = false;
-        }
-        else {
-            // Int (Signed): Cargar y extender signo (Sign Extension)
-            generar("movl -" + to_string(var.offset) + "(%rbp), %eax");
-            generar("cltq");
+            // cltq se generará solo cuando sea necesario (conversiones a LONG, asignaciones a LONG, etc.)
             lastExprWasFloat = false;
         }
     } else if (globalVars.find(node->name) != globalVars.end()) {
         generar("movl " + node->name + "(%rip), %eax");
-        generar("cltq");
+        // cltq se generará solo cuando sea necesario
         lastExprWasFloat = false;
     }
 }
@@ -225,11 +247,16 @@ void CodeGen::visitAssignStmt(AssignStmt* node) {
         if (node->indices.size() >= 1) {
              node->indices[0]->accept(this);
              currentSourceLine = assignLine;
+             // Los índices se usan en operaciones de 64 bits (imulq, addq), necesitan rax completo
+             if (!lastExprWasFloat) generar("cltq");
+
              if (node->indices.size() == 2) {
                  generar("imulq $" + to_string(varInfo->dimensions[1]) + ", %rax");
                  generar("pushq %rax");
                  node->indices[1]->accept(this);
                  currentSourceLine = assignLine;
+                 // Segundo índice también necesita rax completo
+                 if (!lastExprWasFloat) generar("cltq");
                  generar("popq %rbx");
                  generar("addq %rbx, %rax");
              }
@@ -289,17 +316,11 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     setSourceLine(node->op.line);
     int opLine = currentSourceLine;
 
-    // Detectar si la operación es Unsigned
-    bool isUnsignedOp = (node->left->inferredType == DataType::UNSIGNED_INT ||
-                         node->right->inferredType == DataType::UNSIGNED_INT);
-    
-    // Detectar si es Long
-    DataType resultType = node->inferredType;
-    bool isLongOp = (resultType == DataType::LONG);
-
+    // Evaluar right (mantiene su propia línea de código fuente)
     node->right->accept(this);
     bool rightWasFloat = lastExprWasFloat;
 
+    // Resetear solo para las instrucciones de la operación binaria (push/pop)
     currentSourceLine = opLine;
     if (rightWasFloat) {
         generar("subq $8, %rsp");
@@ -308,10 +329,12 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
         generar("pushq %rax");
     }
 
+    // Evaluar left (mantiene su propia línea de código fuente, NO resetear antes)
     node->left->accept(this);
     bool leftWasFloat = lastExprWasFloat;
     bool isFloatOp = leftWasFloat || rightWasFloat;
 
+    // Resetear solo para las instrucciones de la operación binaria (pop)
     currentSourceLine = opLine;
     if (rightWasFloat) {
         generar("movss (%rsp), %xmm1");
@@ -320,10 +343,12 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
         generar("popq %rbx");
     }
 
-    // Promociones Implícitas
+    // Conversiones implícitas (Promoción) - usar opLine
+    currentSourceLine = opLine;
     if (isFloatOp && !leftWasFloat)  generar("cvtsi2ssl %eax, %xmm0");
     if (isFloatOp && !rightWasFloat) generar("cvtsi2ssl %ebx, %xmm1");
 
+    // Operaciones binarias - usar opLine
     currentSourceLine = opLine;
     switch (node->op.type) {
         case TokenType::PLUS:
@@ -516,10 +541,15 @@ void CodeGen::visitArrayAccess(ArrayAccess* node) {
 
     if (node->indices.size() >= 1) {
         node->indices[0]->accept(this);
+        // Los índices se usan en operaciones de 64 bits (imulq, addq), necesitan rax completo
+        if (!lastExprWasFloat) generar("cltq");
+
         if (node->indices.size() == 2) {
             generar("imulq $" + to_string(varInfo->dimensions[1]) + ", %rax");
             generar("pushq %rax");
             node->indices[1]->accept(this);
+            // Segundo índice también necesita rax completo
+            if (!lastExprWasFloat) generar("cltq");
             generar("popq %rbx");
             generar("addq %rbx, %rax");
         }
@@ -532,8 +562,9 @@ void CodeGen::visitArrayAccess(ArrayAccess* node) {
             generar("movss (%rbx), %xmm0");
             lastExprWasFloat = true;
         } else {
+            // Cargar valor del array (cltq solo si se necesita rax para índices/punteros/64 bits)
             generar("movl (%rbx), %eax");
-            generar("cltq");
+            // cltq se generará solo cuando sea necesario (conversiones a LONG, asignaciones a LONG, etc.)
             lastExprWasFloat = false;
         }
     }
@@ -849,4 +880,23 @@ void CodeGen::visitFunctionDecl(FunctionDecl* node) {
     output << "\n";
     currentFunction = "";
     currentSourceLine = savedLine;
+}
+
+bool CodeGen::isExecutableInstruction(const string& instruction) {
+    if (instruction.empty()) return false;
+    
+    string trimmed = instruction;
+    size_t start = trimmed.find_first_not_of(" \t");
+    if (start == string::npos) return false;
+    trimmed = trimmed.substr(start);
+    
+    if (trimmed.empty()) return false;
+    
+    if (trimmed[0] == '.') return false;
+    
+    if (trimmed.back() == ':') return false;
+    
+    if (trimmed[0] == '#' || trimmed[0] == ';') return false;
+    
+    return true;
 }

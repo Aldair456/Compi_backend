@@ -35,9 +35,10 @@ void writeFile(const string& filename, const string& content) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        cerr << "Uso: " << argv[0] << " <archivo_entrada.c> <archivo_salida.asm> [--debug] [--optimize]" << endl;
+        cerr << "Uso: " << argv[0] << " <archivo_entrada.c> <archivo_salida.asm> [--debug] [--optimize] [--debug-visualize]" << endl;
         cerr << "  --debug    : Genera archivo debug.json para ejecución paso a paso" << endl;
         cerr << "  --optimize  : Activa optimizaciones del compilador" << endl;
+        cerr << "  --debug-visualize : Genera metadata completa para visualizador HTML" << endl;
         cerr << "  Nota: Por defecto NO se optimiza (para preservar debug línea por línea)" << endl;
         return 1;
     }
@@ -45,12 +46,16 @@ int main(int argc, char* argv[]) {
     string outputFile = argv[2];
     bool debugMode = false;
     bool optimizeMode = false;
+    bool visualizeMode = false;
     for (int i = 3; i < argc; i++) {
         string arg = argv[i];
         if (arg == "--debug") {
             debugMode = true;
         } else if (arg == "--optimize") {
             optimizeMode = true;
+        } else if (arg == "--debug-visualize") {
+            visualizeMode = true;
+            debugMode = true;
         }
     }
     string source = readFile(inputFile);
@@ -73,6 +78,7 @@ int main(int argc, char* argv[]) {
     DebugGen debugGen;
     if (debugMode) {
         debugGen.setSourceCode(source);
+        codegen.setSourceCode(source);
         codegen.setDebugGen(&debugGen);
     }
     codegen.generate(ast.get());

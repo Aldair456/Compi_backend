@@ -32,11 +32,13 @@ void DebugGen::setSourceCode(const string& source) {
 
 void DebugGen::logInstruction(const string& assembly, int sourceLine,
                              const string& varName,
-                             const string& description) {
+                             const string& description,
+                             const string& cCode) {
     DebugInstruction inst;
     inst.id = instructionCounter++;
     inst.assembly = assembly;
     inst.sourceLine = sourceLine;
+    inst.cCode = cCode;
     inst.varName = varName;
     inst.description = description;
     instructions.push_back(inst);
@@ -88,6 +90,9 @@ string DebugGen::getJSON() {
         json << "      \"id\": " << inst.id << ",\n";
         json << "      \"assembly\": \"" << escapeJSON(inst.assembly) << "\",\n";
         json << "      \"sourceLine\": " << inst.sourceLine << ",\n";
+        if (!inst.cCode.empty()) {
+            json << "      \"cCode\": \"" << escapeJSON(inst.cCode) << "\",\n";
+        }
         if (!inst.varName.empty()) {
             json << "      \"varName\": \"" << escapeJSON(inst.varName) << "\",\n";
         }

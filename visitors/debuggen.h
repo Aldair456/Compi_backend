@@ -12,6 +12,7 @@ struct DebugInstruction {
     int id;
     string assembly;
     int sourceLine;
+    string cCode;
     string varName;
     string description;
 };
@@ -36,7 +37,8 @@ public:
     void setSourceCode(const string& source);
     void logInstruction(const string& assembly, int sourceLine,
                        const string& varName = "",
-                       const string& description = "");
+                       const string& description = "",
+                       const string& cCode = "");
     void logStackVariable(const string& varName, int offset,
                          const string& type, bool isArray, int sourceLine);
     void clearStackFrame();

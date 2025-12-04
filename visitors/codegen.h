@@ -41,6 +41,8 @@ private:
     bool lastExprWasFloat;
     DebugGen* debugGen;
     int currentSourceLine;
+    string sourceCode;
+    vector<string> sourceLines;
     string newLabel(string prefix = "L");
     void generar(string code, const string& varName = "", const string& description = "");
     void generarLabel(string label);
@@ -53,11 +55,14 @@ private:
     int calculateArrayOffset(vector<int>& dimensions, int dimIndex);
     int calculateStackSize(FunctionDecl* node);
     void detectOptimizedVars(FunctionDecl* node);
+    bool isExecutableInstruction(const string& instruction);
 
 public:
     CodeGen();
     void setDebugGen(DebugGen* dg);
     void setSourceLine(int line);
+    void setSourceCode(const string& code);
+    string getSourceLineCode(int line);
     string getOutput();
     void generate(Program* program);
     void visitIntLiteral(IntLiteral* node) override;
