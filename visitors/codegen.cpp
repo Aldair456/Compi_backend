@@ -285,14 +285,17 @@ void CodeGen::visitAssignStmt(AssignStmt* node) {
 }
 
 void CodeGen::visitBinaryOp(BinaryOp* node) {
-    int savedLine = currentSourceLine; // *** ¡LÍNEA AGREGADA! ***
+    int savedLine = currentSourceLine;
     setSourceLine(node->op.line);
     int opLine = currentSourceLine;
 
-    // Detectar si la operación es Unsigned (si alguno de los dos operandos lo es)
-    // Nota: Esto asume que el parser propagó los tipos en 'inferredType'
+    // Detectar si la operación es Unsigned
     bool isUnsignedOp = (node->left->inferredType == DataType::UNSIGNED_INT ||
                          node->right->inferredType == DataType::UNSIGNED_INT);
+    
+    // Detectar si es Long
+    DataType resultType = node->inferredType;
+    bool isLongOp = (resultType == DataType::LONG);
 
     node->right->accept(this);
     bool rightWasFloat = lastExprWasFloat;
@@ -317,7 +320,7 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
         generar("popq %rbx");
     }
 
-    // Promociones Implícitas (Casting automático)
+    // Promociones Implícitas
     if (isFloatOp && !leftWasFloat)  generar("cvtsi2ssl %eax, %xmm0");
     if (isFloatOp && !rightWasFloat) generar("cvtsi2ssl %ebx, %xmm1");
 
@@ -325,16 +328,19 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     switch (node->op.type) {
         case TokenType::PLUS:
             if (isFloatOp) { generar("addss %xmm1, %xmm0"); lastExprWasFloat = true; }
+            else if (isLongOp) { generar("addq %rbx, %rax"); lastExprWasFloat = false; }
             else           { generar("addl %ebx, %eax");    lastExprWasFloat = false; }
             break;
 
         case TokenType::MINUS:
             if (isFloatOp) { generar("subss %xmm1, %xmm0"); lastExprWasFloat = true; }
+            else if (isLongOp) { generar("subq %rbx, %rax"); lastExprWasFloat = false; }
             else           { generar("subl %ebx, %eax");    lastExprWasFloat = false; }
             break;
 
         case TokenType::MULTIPLY:
             if (isFloatOp) { generar("mulss %xmm1, %xmm0"); lastExprWasFloat = true; }
+            else if (isLongOp) { generar("imulq %rbx, %rax"); lastExprWasFloat = false; }
             else           { generar("imull %ebx, %eax");   lastExprWasFloat = false; }
             break;
 
@@ -343,61 +349,75 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
                 generar("divss %xmm1, %xmm0");
                 lastExprWasFloat = true;
             } else {
-                generar("xorq %rdx, %rdx"); // Limpiar RDX para división
-                if (isUnsignedOp) {
-                    generar("divl %ebx");  // División SIN signo
+                generar("xorq %rdx, %rdx");
+                if (isLongOp) {
+                    generar("cqto");
+                    generar("idivq %rbx");
+                } else if (isUnsignedOp) {
+                    generar("divl %ebx");
                 } else {
-                    generar("idivl %ebx"); // División CON signo
+                    generar("cltd");
+                    generar("idivl %ebx");
                 }
                 lastExprWasFloat = false;
             }
             break;
-
-        // COMPARACIONES
-        // Unsigned usa 'b' (below) y 'a' (above)
-        // Signed usa 'l' (less) y 'g' (greater)
+        
+        case TokenType::MODULO:
+             generar("xorq %rdx, %rdx");
+             if (isLongOp) { generar("cqto"); generar("idivq %rbx"); generar("movq %rdx, %rax"); }
+             else if (isUnsignedOp) { generar("divl %ebx"); generar("movl %edx, %eax"); }
+             else { generar("cltd"); generar("idivl %ebx"); generar("movl %edx, %eax"); }
+             lastExprWasFloat = false;
+             break;
 
         case TokenType::EQ:
             if (isFloatOp) { generar("ucomiss %xmm1, %xmm0"); generar("setnp %al"); generar("movb %al, %ah"); generar("setz %al"); generar("andb %ah, %al"); }
+            else if (isLongOp) { generar("cmpq %rbx, %rax"); generar("sete %al"); }
             else { generar("cmpl %ebx, %eax"); generar("sete %al"); }
             generar("movzbq %al, %rax"); lastExprWasFloat = false; break;
 
         case TokenType::NE:
             if (isFloatOp) { generar("ucomiss %xmm1, %xmm0"); generar("setnz %al"); }
+            else if (isLongOp) { generar("cmpq %rbx, %rax"); generar("setne %al"); }
             else { generar("cmpl %ebx, %eax"); generar("setne %al"); }
             generar("movzbq %al, %rax"); lastExprWasFloat = false; break;
 
-        case TokenType::LT: // <
+        case TokenType::LT:
             if (isFloatOp) { generar("ucomiss %xmm1, %xmm0"); generar("setb %al"); }
             else {
-                generar("cmpl %ebx, %eax");
-                if (isUnsignedOp) generar("setb %al"); // Unsigned Below
-                else              generar("setl %al"); // Signed Less
+                if (isLongOp) generar("cmpq %rbx, %rax");
+                else          generar("cmpl %ebx, %eax");
+                if (isUnsignedOp) generar("setb %al");
+                else              generar("setl %al");
             }
             generar("movzbq %al, %rax"); lastExprWasFloat = false; break;
 
-        case TokenType::GT: // >
+        case TokenType::GT:
             if (isFloatOp) { generar("ucomiss %xmm1, %xmm0"); generar("seta %al"); }
             else {
-                generar("cmpl %ebx, %eax");
-                if (isUnsignedOp) generar("seta %al"); // Unsigned Above
-                else              generar("setg %al"); // Signed Greater
+                if (isLongOp) generar("cmpq %rbx, %rax");
+                else          generar("cmpl %ebx, %eax");
+                if (isUnsignedOp) generar("seta %al");
+                else              generar("setg %al");
             }
             generar("movzbq %al, %rax"); lastExprWasFloat = false; break;
 
-        case TokenType::LE: // <=
+        case TokenType::LE:
             if (isFloatOp) { generar("ucomiss %xmm1, %xmm0"); generar("setbe %al"); }
             else {
-                generar("cmpl %ebx, %eax");
+                if (isLongOp) generar("cmpq %rbx, %rax");
+                else          generar("cmpl %ebx, %eax");
                 if (isUnsignedOp) generar("setbe %al");
                 else              generar("setle %al");
             }
             generar("movzbq %al, %rax"); lastExprWasFloat = false; break;
 
-        case TokenType::GE: // >=
+        case TokenType::GE:
             if (isFloatOp) { generar("ucomiss %xmm1, %xmm0"); generar("setae %al"); }
             else {
-                generar("cmpl %ebx, %eax");
+                if (isLongOp) generar("cmpq %rbx, %rax");
+                else          generar("cmpl %ebx, %eax");
                 if (isUnsignedOp) generar("setae %al");
                 else              generar("setge %al");
             }
@@ -407,6 +427,7 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     }
     currentSourceLine = savedLine;
 }
+
 void CodeGen::visitUnaryOp(UnaryOp* node) {
     setSourceLine(node->op.line);
     node->operand->accept(this);

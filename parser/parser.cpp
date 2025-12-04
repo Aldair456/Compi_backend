@@ -137,6 +137,12 @@ unique_ptr<Stmt> Parser::declaration() {
 
         Token typeToken = advance();
         DataType type = tokenToDataType(typeToken);
+        
+        // Fix: Consume optional 'int' after 'unsigned' or 'long'
+        if ((type == DataType::UNSIGNED_INT || type == DataType::LONG) && check(TokenType::INT)) {
+            advance();
+        }
+
         Token name = consume(TokenType::IDENTIFIER, "Expected variable or function name.");
 
         if (check(TokenType::LPAREN)) {

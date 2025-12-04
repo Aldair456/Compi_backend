@@ -28,7 +28,7 @@ main:
     pushq %rax
     movq -8(%rbp), %rax
     popq %rbx
-    addl %ebx, %eax
+    addq %rbx, %rax
     movq %rax, %rsi
     popq %rdi
     xorq %rax, %rax

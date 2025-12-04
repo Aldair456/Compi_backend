@@ -1,19 +1,27 @@
 {
   "sourceLines": [
-    "// Test 1: Declaración de variables básicas",
     "#include <stdio.h>",
+    "",
     "int main() {",
-    "  int a = 5;",
-    "  int b = 3;",
-    "  int suma = a + b;",
-    "  return suma;",
+    "    float a = 3 + 4.5;",
+    "    printf(\"Result: %.2f\\n\", a);",
+    "    ",
+    "    int b = 10;",
+    "    float c = b + 2.5;",
+    "    printf(\"Result 2: %.2f\\n\", c);",
+    "    ",
+    "    if (3 < 4.5) {",
+    "        printf(\"Comparison works\\n\");",
+    "    }",
+    "    ",
+    "    return 0;",
     "}"
   ],
   "stackFrame": [
     {
       "varName": "a",
       "offset": 4,
-      "type": "int",
+      "type": "float",
       "isArray": false,
       "sourceLine": 4
     },
@@ -22,14 +30,14 @@
       "offset": 8,
       "type": "int",
       "isArray": false,
-      "sourceLine": 5
+      "sourceLine": 7
     },
     {
-      "varName": "suma",
+      "varName": "c",
       "offset": 12,
-      "type": "int",
+      "type": "float",
       "isArray": false,
-      "sourceLine": 6
+      "sourceLine": 8
     }
   ],
   "instructions": [
@@ -60,112 +68,359 @@
     },
     {
       "id": 4,
-      "assembly": "movl $5, %eax",
+      "assembly": "movss float_const_8(%rip), %xmm0",
       "sourceLine": 4,
       "line": 4
     },
     {
       "id": 5,
-      "assembly": "movl %eax, -4(%rbp)",
+      "assembly": "subq $8, %rsp",
       "sourceLine": 4,
       "line": 4
     },
     {
       "id": 6,
-      "assembly": "movl $3, %eax",
-      "sourceLine": 5,
-      "line": 5
+      "assembly": "movss %xmm0, (%rsp)",
+      "sourceLine": 4,
+      "line": 4
     },
     {
       "id": 7,
-      "assembly": "movl %eax, -8(%rbp)",
+      "assembly": "movl $3, %eax",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 8,
+      "assembly": "cvtsi2ssl %eax, %xmm0",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 9,
+      "assembly": "movss (%rsp), %xmm1",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 10,
+      "assembly": "addq $8, %rsp",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 11,
+      "assembly": "addss %xmm1, %xmm0",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 12,
+      "assembly": "movss %xmm0, -4(%rbp)",
+      "sourceLine": 4,
+      "line": 4
+    },
+    {
+      "id": 13,
+      "assembly": "leaq str_const_9(%rip), %rax",
       "sourceLine": 5,
       "line": 5
     },
     {
-      "id": 8,
-      "assembly": "movl -8(%rbp), %eax",
-      "sourceLine": 6,
-      "line": 6
-    },
-    {
-      "id": 9,
-      "assembly": "cltq",
-      "sourceLine": 6,
-      "line": 6
-    },
-    {
-      "id": 10,
-      "assembly": "pushq %rax",
-      "sourceLine": 6,
-      "line": 6
-    },
-    {
-      "id": 11,
-      "assembly": "movl -4(%rbp), %eax",
-      "sourceLine": 6,
-      "line": 6
-    },
-    {
-      "id": 12,
-      "assembly": "cltq",
-      "sourceLine": 6,
-      "line": 6
-    },
-    {
-      "id": 13,
-      "assembly": "popq %rbx",
-      "sourceLine": 6,
-      "line": 6
-    },
-    {
       "id": 14,
-      "assembly": "addl %ebx, %eax",
-      "sourceLine": 6,
-      "line": 6
+      "assembly": "movq %rax, %rdi",
+      "sourceLine": 5,
+      "line": 5
     },
     {
       "id": 15,
-      "assembly": "movl %eax, -12(%rbp)",
-      "sourceLine": 6,
-      "line": 6
+      "assembly": "pushq %rdi",
+      "sourceLine": 5,
+      "line": 5
     },
     {
       "id": 16,
-      "assembly": "movl -12(%rbp), %eax",
-      "sourceLine": 7,
-      "line": 7
+      "assembly": "movss -4(%rbp), %xmm0",
+      "sourceLine": 5,
+      "line": 5
     },
     {
       "id": 17,
-      "assembly": "cltq",
-      "sourceLine": 7,
-      "line": 7
+      "assembly": "cvtss2sd %xmm0, %xmm0",
+      "sourceLine": 5,
+      "line": 5
     },
     {
       "id": 18,
-      "assembly": "jmp .end_main",
-      "sourceLine": 7,
-      "line": 7
+      "assembly": "popq %rdi",
+      "sourceLine": 5,
+      "line": 5
     },
     {
       "id": 19,
-      "assembly": ".end_main:",
-      "sourceLine": 7,
-      "description": "label",
-      "line": 7
+      "assembly": "movq $1, %rax",
+      "sourceLine": 5,
+      "line": 5
     },
     {
       "id": 20,
-      "assembly": "leave",
+      "assembly": "call printf@PLT",
+      "sourceLine": 5,
+      "line": 5
+    },
+    {
+      "id": 21,
+      "assembly": "movl $10, %eax",
       "sourceLine": 7,
       "line": 7
     },
     {
-      "id": 21,
-      "assembly": "ret",
+      "id": 22,
+      "assembly": "movl %eax, -8(%rbp)",
       "sourceLine": 7,
       "line": 7
+    },
+    {
+      "id": 23,
+      "assembly": "movss float_const_10(%rip), %xmm0",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 24,
+      "assembly": "subq $8, %rsp",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 25,
+      "assembly": "movss %xmm0, (%rsp)",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 26,
+      "assembly": "movl -8(%rbp), %eax",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 27,
+      "assembly": "cltq",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 28,
+      "assembly": "cvtsi2ssl %eax, %xmm0",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 29,
+      "assembly": "movss (%rsp), %xmm1",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 30,
+      "assembly": "addq $8, %rsp",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 31,
+      "assembly": "addss %xmm1, %xmm0",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 32,
+      "assembly": "movss %xmm0, -12(%rbp)",
+      "sourceLine": 8,
+      "line": 8
+    },
+    {
+      "id": 33,
+      "assembly": "leaq str_const_11(%rip), %rax",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 34,
+      "assembly": "movq %rax, %rdi",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 35,
+      "assembly": "pushq %rdi",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 36,
+      "assembly": "movss -12(%rbp), %xmm0",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 37,
+      "assembly": "cvtss2sd %xmm0, %xmm0",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 38,
+      "assembly": "popq %rdi",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 39,
+      "assembly": "movq $1, %rax",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 40,
+      "assembly": "call printf@PLT",
+      "sourceLine": 9,
+      "line": 9
+    },
+    {
+      "id": 41,
+      "assembly": "movss float_const_14(%rip), %xmm0",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 42,
+      "assembly": "subq $8, %rsp",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 43,
+      "assembly": "movss %xmm0, (%rsp)",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 44,
+      "assembly": "movl $3, %eax",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 45,
+      "assembly": "cvtsi2ssl %eax, %xmm0",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 46,
+      "assembly": "movss (%rsp), %xmm1",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 47,
+      "assembly": "addq $8, %rsp",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 48,
+      "assembly": "ucomiss %xmm1, %xmm0",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 49,
+      "assembly": "setb %al",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 50,
+      "assembly": "movzbq %al, %rax",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 51,
+      "assembly": "testq %rax, %rax",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 52,
+      "assembly": "jz endif_13",
+      "sourceLine": 11,
+      "line": 11
+    },
+    {
+      "id": 53,
+      "assembly": "leaq str_const_15(%rip), %rax",
+      "sourceLine": 12,
+      "line": 12
+    },
+    {
+      "id": 54,
+      "assembly": "movq %rax, %rdi",
+      "sourceLine": 12,
+      "line": 12
+    },
+    {
+      "id": 55,
+      "assembly": "xorq %rax, %rax",
+      "sourceLine": 12,
+      "line": 12
+    },
+    {
+      "id": 56,
+      "assembly": "call printf@PLT",
+      "sourceLine": 12,
+      "line": 12
+    },
+    {
+      "id": 57,
+      "assembly": "endif_13:",
+      "sourceLine": 12,
+      "description": "label",
+      "line": 12
+    },
+    {
+      "id": 58,
+      "assembly": "movl $0, %eax",
+      "sourceLine": 15,
+      "line": 15
+    },
+    {
+      "id": 59,
+      "assembly": "jmp .end_main",
+      "sourceLine": 15,
+      "line": 15
+    },
+    {
+      "id": 60,
+      "assembly": ".end_main:",
+      "sourceLine": 15,
+      "description": "label",
+      "line": 15
+    },
+    {
+      "id": 61,
+      "assembly": "leave",
+      "sourceLine": 15,
+      "line": 15
+    },
+    {
+      "id": 62,
+      "assembly": "ret",
+      "sourceLine": 15,
+      "line": 15
     }
   ]
 }

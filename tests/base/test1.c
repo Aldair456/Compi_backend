@@ -4,5 +4,6 @@ int main() {
   int a = 5;
   int b = 3;
   int suma = a + b;
-  return suma;
+  printf("%d\n", suma); // Debería imprimir 8
+  return 0;
 }
