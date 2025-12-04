@@ -35,9 +35,10 @@ void writeFile(const string& filename, const string& content) {
 
 int main(int argc, char* argv[]) {
     if (argc < 3) {
-        cerr << "Uso: " << argv[0] << " <archivo_entrada.c> <archivo_salida.asm> [--debug] [--optimize]" << endl;
-        cerr << "  --debug    : Genera archivo debug.json para ejecución paso a paso" << endl;
-        cerr << "  --optimize  : Activa optimizaciones del compilador" << endl;
+        cerr << "Uso: " << argv[0] << " <archivo_entrada.c> <archivo_salida.asm> [--debug] [--debug-visualize] [--optimize]" << endl;
+        cerr << "  --debug           : Genera archivo debug.json para ejecución paso a paso" << endl;
+        cerr << "  --debug-visualize : Genera archivo debug.json para visualización (igual que --debug)" << endl;
+        cerr << "  --optimize        : Activa optimizaciones del compilador" << endl;
         cerr << "  Nota: Por defecto NO se optimiza (para preservar debug línea por línea)" << endl;
         return 1;
     }
@@ -47,7 +48,7 @@ int main(int argc, char* argv[]) {
     bool optimizeMode = false;
     for (int i = 3; i < argc; i++) {
         string arg = argv[i];
-        if (arg == "--debug") {
+        if (arg == "--debug" || arg == "--debug-visualize") {
             debugMode = true;
         } else if (arg == "--optimize") {
             optimizeMode = true;
