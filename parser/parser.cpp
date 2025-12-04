@@ -532,7 +532,7 @@ unique_ptr<Expr> Parser::primary() {
             return lit;
         } catch (const std::out_of_range& e) {
             // Desbordamiento de int -> Promocionar a Long
-            long val = stol(token.lexeme);
+            long long val = stoll(token.lexeme);
             unique_ptr<LongLiteral> lit = make_unique<LongLiteral>(val);
             lit->line = token.line;
             return lit;
@@ -552,7 +552,7 @@ unique_ptr<Expr> Parser::primary() {
         Token token = previous();
         string lexeme = token.lexeme;
         if (lexeme.back() == 'L' || lexeme.back() == 'l') lexeme.pop_back();
-        unique_ptr<LongLiteral> lit = make_unique<LongLiteral>(stol(lexeme));
+        unique_ptr<LongLiteral> lit = make_unique<LongLiteral>(stoll(lexeme));
         lit->line = token.line;
         return lit;
     }

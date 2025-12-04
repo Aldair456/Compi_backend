@@ -285,7 +285,7 @@ void CodeGen::visitAssignStmt(AssignStmt* node) {
 }
 
 void CodeGen::visitBinaryOp(BinaryOp* node) {
-    int savedLine = currentSourceLine;  // <--- ¡AGREGA ESTA LÍNEA QUE FALTABA!    setSourceLine(node->op.line);
+    int savedLine = currentSourceLine; // *** ¡LÍNEA AGREGADA! ***
     setSourceLine(node->op.line);
     int opLine = currentSourceLine;
 
@@ -407,7 +407,6 @@ void CodeGen::visitBinaryOp(BinaryOp* node) {
     }
     currentSourceLine = savedLine;
 }
-
 void CodeGen::visitUnaryOp(UnaryOp* node) {
     setSourceLine(node->op.line);
     node->operand->accept(this);
