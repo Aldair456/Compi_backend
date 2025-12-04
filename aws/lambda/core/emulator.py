@@ -21,6 +21,10 @@ class X86Emulator:
         }
         self.regs['rsp'] = self.INITIAL_STACK_POINTER
         self.regs['rbp'] = self.INITIAL_STACK_POINTER
+        # Registros XMM para floats (guardamos como int, interpretamos como float cuando sea necesario)
+        self.xmm_regs: Dict[str, float] = {
+            reg: 0.0 for reg in self.REGISTERS_XMM
+        }
         self.flags: Dict[str, int] = {'ZF': 0, 'SF': 0, 'CF': 0, 'OF': 0}
         self.stack: Dict[int, int] = {}
         self.labels: Dict[str, int] = {}
@@ -70,8 +74,19 @@ class X86Emulator:
             return self.regs['r9'] & 0xFF
         return 0
     def set_reg(self, name: str, value: int) -> None:
-        if name in self.regs:
+        if name in self.REGISTERS_XMM:
+            # Para XMM, convertir int a float
+            import struct
+            self.xmm_regs[name] = struct.unpack('f', struct.pack('I', value & 0xFFFFFFFF))[0]
+        elif name in self.regs:
             self.regs[name] = value & 0xFFFFFFFFFFFFFFFF
+            # Cuando se actualiza un registro de 64 bits, también actualizar sus alias de 32 bits
+            # Por ejemplo: rbx -> ebx, rax -> eax, etc.
+            if name == 'rbx':
+                # No hay un registro ebx separado, se accede como los 32 bits bajos de rbx
+                pass
+            elif name == 'rax':
+                pass
         elif name == 'eax':
             self.regs['rax'] = (self.regs['rax'] & 0xFFFFFFFF00000000) | (value & 0xFFFFFFFF)
         elif name == 'ebx':
@@ -189,14 +204,37 @@ class X86Emulator:
             return False
     def parse_operand(self, op: str) -> Tuple[str, Any]:
         op = op.strip()
-        if op in self.regs or op in self.REGISTERS_32BIT or op in self.REGISTERS_8BIT:
+        # Quitar el % si está presente (sintaxis AT&T)
+        if op.startswith('%'):
+            reg_name = op[1:]
+            if reg_name in self.regs or reg_name in self.REGISTERS_32BIT or reg_name in self.REGISTERS_8BIT or reg_name in self.REGISTERS_XMM:
+                return ('reg', reg_name)
+        # También verificar sin % por si acaso
+        if op in self.regs or op in self.REGISTERS_32BIT or op in self.REGISTERS_8BIT or op in self.REGISTERS_XMM:
             return ('reg', op)
+        if op.startswith('$'):
+            # Inmediato con $ (sintaxis AT&T)
+            op = op[1:]
         if op.startswith(('0x', '0X')):
             return ('imm', int(op, 16))
         try:
             return ('imm', int(op))
         except ValueError:
             pass
+        
+        # Sintaxis AT&T: offset(%reg) o (%reg)
+        att_mem_match = re.match(r'(-?\d+)\(%(\w+)\)', op)
+        if att_mem_match:
+            offset = int(att_mem_match.group(1))
+            base_reg = att_mem_match.group(2)
+            return ('mem', (base_reg, offset))
+        
+        att_mem_no_offset = re.match(r'\(%(\w+)\)', op)
+        if att_mem_no_offset:
+            base_reg = att_mem_no_offset.group(1)
+            return ('mem', (base_reg, 0))
+        
+        # Sintaxis Intel: [reg+offset] o [reg]
         mem_match = re.match(r'\[([^\]]+)\]', op)
         if mem_match:
             expr = mem_match.group(1)
@@ -213,7 +251,7 @@ class X86Emulator:
                 base_reg = expr.strip()
                 offset = 0
             return ('mem', (base_reg, offset))
-        if op.startswith('.L') or op.endswith(':'):
+        if op.startswith('.L') or op.endswith(':') or op.startswith('while_') or op.startswith('.end_'):
             return ('label', op.rstrip(':'))
         return ('unknown', op)
     def get_value(self, operand: Tuple[str, Any]) -> int:
@@ -256,8 +294,22 @@ class X86Emulator:
         if not parts:
             return True
         mnemonic_full = parts[0].lower()
+        
         # Quitar sufijos de tamaño (l=32, q=64, b=8, w=16) para obtener el mnemonic base
-        if mnemonic_full.endswith(('l', 'q', 'b', 'w')):
+        # PERO: Algunos mnemonics tienen sufijos que son parte del nombre, no tamaños
+        if mnemonic_full.startswith('set') or mnemonic_full.startswith('j') or mnemonic_full.startswith('cmov'):
+            # Para SET, JMP, CMOV el sufijo es parte del nombre, no un tamaño
+            mnemonic = mnemonic_full
+        elif mnemonic_full in ['movzbq', 'movzbl', 'movzbw', 'movzwl', 'movzwq']:
+            # movzbq -> movzx, movzbl -> movzx, etc. (move with zero extension)
+            mnemonic = 'movzx'
+        elif mnemonic_full in ['movsbl', 'movsbw', 'movsbq', 'movswl', 'movswq', 'movslq']:
+            # movsbl -> movsx, etc. (move with sign extension)  
+            mnemonic = 'movsx'
+        elif mnemonic_full in ['cltq', 'cltd', 'cqto']:
+            # Instrucciones de conversión de signo - NO quitar sufijos
+            mnemonic = mnemonic_full
+        elif mnemonic_full.endswith(('l', 'q', 'b', 'w')):
             mnemonic = mnemonic_full[:-1]
         else:
             mnemonic = mnemonic_full
@@ -272,8 +324,15 @@ class X86Emulator:
     def _execute_mnemonic(self, mnemonic: str, operands: List[Tuple[str, Any]]) -> Union[bool, str, Tuple[str, Any]]:
         if mnemonic == 'mov':
             if len(operands) == 2:
-                src_val = self.get_value(operands[1])
-                self.set_value(operands[0], src_val)
+                # En sintaxis AT&T: mov src, dst → dst = src
+                src_val = self.get_value(operands[0])  # FUENTE es operands[0]
+                print(f"DEBUG MOV: operands={operands}, src_val={src_val}, dst={operands[1]}")
+                self.set_value(operands[1], src_val)  # DESTINO es operands[1]
+                # Verificar que se guardó correctamente
+                if operands[1][0] == 'reg':
+                    reg_name = operands[1][1]
+                    new_val = self.get_reg(reg_name)
+                    print(f"DEBUG MOV: Después de guardar, %{reg_name} = {new_val}")
             return True
         elif mnemonic == 'lea':
             if len(operands) == 2 and operands[1][0] == 'mem':
@@ -304,30 +363,36 @@ class X86Emulator:
             return True
         elif mnemonic == 'add':
             if len(operands) == 2:
-                dst_val = self.get_value(operands[0])
-                src_val = self.get_value(operands[1])
+                # En sintaxis AT&T: add src, dst → dst = dst + src
+                print(f"DEBUG ADD: operands={operands}")
+                src_val = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
+                print(f"DEBUG ADD: src_val={src_val}, dst_val={dst_val}, src_type={operands[0][0]}, dst_type={operands[1][0]}")
                 result = dst_val + src_val
-                self.set_value(operands[0], result)
+                print(f"DEBUG ADD: result={result}, guardando en operands[1]={operands[1]}")
+                self.set_value(operands[1], result)  # Guardar en destino
                 self.update_flags(result)
-                if operands[0][0] == 'mem':
-                    base_reg, offset = operands[0][1]
+                if operands[1][0] == 'mem':
+                    base_reg, offset = operands[1][1]
                     if base_reg == 'rbp' and abs(offset) <= 20:
                         print(f"DEBUG: add [rbp{offset:+d}]: {dst_val} + {src_val} = {result}")
             return True
         elif mnemonic == 'sub':
             if len(operands) == 2:
-                dst_val = self.get_value(operands[0])
-                src_val = self.get_value(operands[1])
+                # En sintaxis AT&T: sub src, dst → dst = dst - src
+                src_val = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
                 result = dst_val - src_val
-                self.set_value(operands[0], result)
+                self.set_value(operands[1], result)  # Guardar en destino
                 self.update_flags(result)
             return True
         elif mnemonic == 'imul':
             if len(operands) >= 2:
-                dst_val = self.get_value(operands[0])
-                src_val = self.get_value(operands[1])
+                # En sintaxis AT&T: imul src, dst → dst = dst * src
+                src_val = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
                 result = dst_val * src_val
-                self.set_value(operands[0], result)
+                self.set_value(operands[1], result)  # Guardar en destino
                 self.update_flags(result)
             return True
         elif mnemonic == 'mul':
@@ -371,15 +436,16 @@ class X86Emulator:
             return True
         elif mnemonic in ['and', 'or', 'xor']:
             if len(operands) == 2:
-                dst_val = self.get_value(operands[0])
-                src_val = self.get_value(operands[1])
+                # En sintaxis AT&T: op src, dst → dst = dst op src
+                src_val = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
                 if mnemonic == 'and':
                     result = dst_val & src_val
                 elif mnemonic == 'or':
                     result = dst_val | src_val
                 else:
                     result = dst_val ^ src_val
-                self.set_value(operands[0], result)
+                self.set_value(operands[1], result)  # Guardar en destino
                 self.update_flags(result)
             return True
         elif mnemonic == 'not':
@@ -391,37 +457,57 @@ class X86Emulator:
             return True
         elif mnemonic in ['shl', 'sal']:
             if len(operands) == 2:
-                dst_val = self.get_value(operands[0])
-                shift = self.get_value(operands[1])
+                # En sintaxis AT&T: shl shift, dst → dst = dst << shift
+                shift = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
                 result = dst_val << shift
-                self.set_value(operands[0], result)
+                self.set_value(operands[1], result)  # Guardar en destino
                 self.update_flags(result)
             return True
         elif mnemonic == 'shr':
             if len(operands) == 2:
-                dst_val = self.get_value(operands[0])
-                shift = self.get_value(operands[1])
+                # En sintaxis AT&T: shr shift, dst → dst = dst >> shift
+                shift = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
                 result = dst_val >> shift
-                self.set_value(operands[0], result)
+                self.set_value(operands[1], result)  # Guardar en destino
                 self.update_flags(result)
             return True
         elif mnemonic == 'cmp':
             if len(operands) == 2:
-                val1 = self.get_value(operands[0])
-                val2 = self.get_value(operands[1])
-                result = val1 - val2
-                self.update_flags(result, size=64)
-                val1_signed = val1 if val1 < 2**63 else val1 - 2**64
-                val2_signed = val2 if val2 < 2**63 else val2 - 2**64
-                val1_positive = val1_signed >= 0
-                val2_positive = val2_signed >= 0
+                # En sintaxis AT&T: cmp src, dst hace dst - src
+                print(f"DEBUG CMP OPERANDS: op0={operands[0]}, op1={operands[1]}")
+                print(f"DEBUG CMP REGISTERS BEFORE: eax={self.get_reg('eax')}, ebx={self.get_reg('ebx')}, rax={self.get_reg('rax')}, rbx={self.get_reg('rbx')}")
+                src_val = self.get_value(operands[0])
+                dst_val = self.get_value(operands[1])
+                print(f"DEBUG CMP VALUES: src_val={src_val}, dst_val={dst_val}")
+                
+                # Para cmpl, solo usar los 32 bits inferiores
+                if len(operands) >= 2 and operands[1][0] == 'reg' and operands[1][1].startswith('e'):
+                    src_val = src_val & 0xFFFFFFFF
+                    dst_val = dst_val & 0xFFFFFFFF
+                    result = dst_val - src_val
+                    # Manejar overflow de 32 bits
+                    if result < -(2**31):
+                        result += 2**32
+                    elif result >= 2**31:
+                        result -= 2**32
+                    self.update_flags(result, size=32)
+                else:
+                    result = dst_val - src_val
+                    self.update_flags(result, size=64)
+                
+                dst_signed = dst_val if dst_val < 2**63 else dst_val - 2**64
+                src_signed = src_val if src_val < 2**63 else src_val - 2**64
+                dst_positive = dst_signed >= 0
+                src_positive = src_signed >= 0
                 result_positive = result >= 0
-                if (val1_positive and not val2_positive and not result_positive) or \
-                   (not val1_positive and val2_positive and result_positive):
+                if (dst_positive and not src_positive and not result_positive) or \
+                   (not dst_positive and src_positive and result_positive):
                     self.flags['OF'] = 1
                 else:
                     self.flags['OF'] = 0
-                print(f"DEBUG: cmp {val1} vs {val2} = {result}, ZF={self.flags['ZF']}, SF={self.flags['SF']}, OF={self.flags['OF']}, CF={self.flags.get('CF', 0)}")
+                print(f"DEBUG: cmp {dst_val} vs {src_val} = {result}, ZF={self.flags['ZF']}, SF={self.flags['SF']}, OF={self.flags['OF']}, CF={self.flags.get('CF', 0)}")
             return True
         elif mnemonic == 'test':
             if len(operands) == 2:
@@ -464,6 +550,74 @@ class X86Emulator:
             if len(operands) == 1:
                 condition_met = self._evaluate_set_condition(mnemonic)
                 self.set_value(operands[0], 1 if condition_met else 0)
+            return True
+        elif mnemonic == 'movss':
+            # Move Scalar Single-precision Float
+            if len(operands) == 2:
+                src_val = self.get_value(operands[0])
+                self.set_value(operands[1], src_val)
+            return True
+        elif mnemonic == 'addss':
+            # Add Scalar Single-precision Float
+            if len(operands) == 2:
+                import struct
+                # Obtener valores como floats
+                src_int = self.get_value(operands[0])
+                dst_int = self.get_value(operands[1])
+                src_float = struct.unpack('f', struct.pack('I', src_int & 0xFFFFFFFF))[0]
+                dst_float = struct.unpack('f', struct.pack('I', dst_int & 0xFFFFFFFF))[0]
+                result_float = dst_float + src_float
+                # Convertir resultado a int
+                result_int = struct.unpack('I', struct.pack('f', result_float))[0]
+                self.set_value(operands[1], result_int)
+            return True
+        elif mnemonic == 'subss':
+            # Subtract Scalar Single-precision Float
+            if len(operands) == 2:
+                import struct
+                src_int = self.get_value(operands[0])
+                dst_int = self.get_value(operands[1])
+                src_float = struct.unpack('f', struct.pack('I', src_int & 0xFFFFFFFF))[0]
+                dst_float = struct.unpack('f', struct.pack('I', dst_int & 0xFFFFFFFF))[0]
+                result_float = dst_float - src_float
+                result_int = struct.unpack('I', struct.pack('f', result_float))[0]
+                self.set_value(operands[1], result_int)
+            return True
+        elif mnemonic == 'mulss':
+            # Multiply Scalar Single-precision Float
+            if len(operands) == 2:
+                import struct
+                src_int = self.get_value(operands[0])
+                dst_int = self.get_value(operands[1])
+                src_float = struct.unpack('f', struct.pack('I', src_int & 0xFFFFFFFF))[0]
+                dst_float = struct.unpack('f', struct.pack('I', dst_int & 0xFFFFFFFF))[0]
+                result_float = dst_float * src_float
+                result_int = struct.unpack('I', struct.pack('f', result_float))[0]
+                self.set_value(operands[1], result_int)
+            return True
+        elif mnemonic == 'divss':
+            # Divide Scalar Single-precision Float
+            if len(operands) == 2:
+                import struct
+                src_int = self.get_value(operands[0])
+                dst_int = self.get_value(operands[1])
+                src_float = struct.unpack('f', struct.pack('I', src_int & 0xFFFFFFFF))[0]
+                dst_float = struct.unpack('f', struct.pack('I', dst_int & 0xFFFFFFFF))[0]
+                if src_float != 0.0:
+                    result_float = dst_float / src_float
+                    result_int = struct.unpack('I', struct.pack('f', result_float))[0]
+                    self.set_value(operands[1], result_int)
+            return True
+        elif mnemonic == 'cltq':
+            # Convert Long To Quad - extiende eax (32 bits) a rax (64 bits) con signo
+            eax_value = self.regs['rax'] & 0xFFFFFFFF
+            if eax_value >= 2**31:
+                # Extender signo negativo
+                rax_value = eax_value | 0xFFFFFFFF00000000
+            else:
+                # Extender signo positivo (ceros)
+                rax_value = eax_value
+            self.regs['rax'] = rax_value & 0xFFFFFFFFFFFFFFFF
             return True
         elif mnemonic in ['jmp', 'je', 'jne', 'jl', 'jg', 'jle', 'jge', 'jnz', 'jz']:
             return ('jump', mnemonic, operands[0] if operands else None)
@@ -945,25 +1099,45 @@ class X86Emulator:
         Obtiene el valor actual de una variable.
         Retorna: (valor_signed, valor_hex, location)
         """
-        # PRIORIDAD 1: Si tenemos el valor actualizado en variable_values, usarlo
+        inst_var_name = instruction_data.get('varName', '')
+        inst_asm = instruction_data.get('assembly', '').strip()
+        
+        # PRIORIDAD 1: Si la variable está en el stack, leer del stack (valor más actualizado)
+        # Esto asegura que en bucles, los valores actualizados se reflejen correctamente
+        if var_addr in self.stack:
+            stack_value = self.stack[var_addr]
+            if var_type == 'long':
+                if stack_value >= 2**63:
+                    var_value_signed = stack_value - 2**64
+                else:
+                    var_value_signed = stack_value
+                var_value = stack_value
+            else:
+                stack_value_32 = stack_value & 0xFFFFFFFF
+                if stack_value_32 >= 2**31:
+                    var_value_signed = stack_value_32 - 2**32
+                else:
+                    var_value_signed = stack_value_32
+                var_value = stack_value_32
+            var_location = f"stack:0x{var_addr:x}"
+            return var_value_signed, var_value, var_location
+        
+        # PRIORIDAD 2: Si tenemos el valor en variable_values cache (pero no en stack todavía)
         if var_name in self.variable_values:
             var_value_signed = self.variable_values[var_name]
             var_value = var_value_signed if var_value_signed >= 0 else (var_value_signed + (2**64 if var_type == 'long' else 2**32))
             var_location = f"stack:0x{var_addr:x}"
             return var_value_signed, var_value, var_location
         
-        inst_var_name = instruction_data.get('varName', '')
-        inst_asm = instruction_data.get('assembly', '').strip()
-        
         var_value_signed = 0
         var_value = 0
         var_location = f"stack:0x{var_addr:x}"
         
-        # 2. Verificar si la variable está siendo modificada en esta instrucción
+        # PRIORIDAD 3: Verificar si la variable está siendo modificada en esta instrucción
         is_current_var = (inst_var_name == var_name or 
                          (inst_var_name and var_name in inst_var_name))
         
-        # 3. Verificar si la instrucción escribe a esta dirección de variable
+        # Verificar si la instrucción escribe a esta dirección de variable
         writes_to_var = False
         if inst_asm:
             # Detectar si la instrucción escribe a esta dirección (ej: movl %eax, -4(%rbp))
@@ -974,7 +1148,7 @@ class X86Emulator:
                 if len(parts) == 2 and offset_str in parts[1]:
                     writes_to_var = True
         
-        # 4. Si está siendo modificada en esta instrucción, leer del registro
+        # Si está siendo modificada en esta instrucción, leer del registro
         if is_current_var or writes_to_var:
             if var_type == 'long':
                 var_value = self.regs.get('rax', 0)
@@ -991,25 +1165,7 @@ class X86Emulator:
                     var_value_signed = var_value
             var_location = "register:eax" if var_type != 'long' else "register:rax"
         
-        # 5. Si está en el stack, leer del stack
-        elif var_addr in self.stack:
-            stack_value = self.stack[var_addr] & 0xFFFFFFFF
-            if var_type == 'long':
-                stack_value = self.stack[var_addr]
-                if stack_value >= 2**63:
-                    var_value_signed = stack_value - 2**64
-                else:
-                    var_value_signed = stack_value
-                var_value = stack_value
-            else:
-                if stack_value >= 2**31:
-                    var_value_signed = stack_value - 2**32
-                else:
-                    var_value_signed = stack_value
-                var_value = stack_value
-            var_location = f"stack:0x{var_addr:x}"
-        
-        # 6. Si la instrucción carga esta variable al registro, leer del registro
+        # 4. Si la instrucción carga esta variable al registro, leer del registro
         elif inst_asm and f'-{abs(offset)}(%rbp)' in inst_asm:
             if 'movl' in inst_asm or 'movq' in inst_asm:
                 if var_type == 'long':
@@ -1093,8 +1249,9 @@ class X86Emulator:
                 var_type = var_info.get('type', 'int')
                 current_rbp = self.regs['rbp']
                 rbp_to_use = current_rbp
-                # CORRECCIÓN: offset ya es negativo (ej: -4, -8), entonces rbp + offset es correcto
-                var_addr = rbp_to_use + offset
+                # CORRECCIÓN: offset en stackFrame es POSITIVO (4, 8), pero en memoria es NEGATIVO
+                # Entonces: var_addr = rbp - offset (no rbp + offset)
+                var_addr = rbp_to_use - offset
                 
                 # Obtener el valor actual de la variable usando la nueva función
                 var_value_signed, var_value, var_location = self._get_variable_value(
@@ -1730,29 +1887,43 @@ def emulate_from_debug(debug_data: Dict[str, Any], max_steps: int = 1000) -> Lis
             continue
         if step_count < 10 or 'jmp' in first_line.lower() or 'jl' in first_line.lower() or 'jge' in first_line.lower():
             print(f"DEBUG: Ejecutando PC={pc}: '{first_line}'")
+        # Guardar valores de registros ANTES de ejecutar la instrucción (para descripciones)
+        emulator.registers_before_instruction = {k: v for k, v in emulator.regs.items()}
+        
+        # EJECUTAR LA INSTRUCCIÓN - esto actualiza registros y stack
         result = emulator.execute_instruction(asm)
         if emulator.call_stack:
             emulator.call_stack[-1]['rbp'] = emulator.regs['rbp']
         
-        # Guardar valores de registros ANTES de ejecutar la instrucción
-        emulator.registers_before_instruction = {k: v for k, v in emulator.regs.items()}
-        
-        # Analizar la instrucción y actualizar valores de variables directamente
+        # Actualizar variable_values después de ejecutar para rastreo
         if emulator.call_stack:
             active_frame = emulator.call_stack[-1]
             stack_frame_info = active_frame.get('stackFrame', [])
-            instruction_data_for_analysis = {
-                'id': inst.get('id', pc),
-                'assembly': asm,
-                'sourceLine': inst.get('sourceLine', 0),
-                'varName': inst.get('varName', ''),
-                'cCode': inst.get('cCode', '')
-            }
-            if step_count < 10:
-                print(f"DEBUG: Llamando _analyze_instruction_and_update_variables para: '{first_line}', varName='{inst.get('varName', '')}', stackFrame tiene {len(stack_frame_info)} variables")
-            emulator._analyze_instruction_and_update_variables(instruction_data_for_analysis, stack_frame_info)
-            if step_count < 10:
-                print(f"DEBUG: Después de análisis, variable_values = {emulator.variable_values}")
+            # Actualizar variable_values leyendo del stack actualizado
+            for var_info in stack_frame_info:
+                var_name = var_info.get('varName', '')
+                if not var_name:
+                    continue
+                offset = var_info.get('offset', 0)
+                var_type = var_info.get('type', 'int')
+                # Calcular dirección: offset en stackFrame es positivo (4, 8)
+                # pero en memoria las variables están en rbp-offset
+                var_addr = emulator.regs['rbp'] - offset
+                # Leer del stack si existe
+                if var_addr in emulator.stack:
+                    stack_value = emulator.stack[var_addr]
+                    if var_type == 'long':
+                        if stack_value >= 2**63:
+                            var_value_signed = stack_value - 2**64
+                        else:
+                            var_value_signed = stack_value
+                    else:
+                        stack_value_32 = stack_value & 0xFFFFFFFF
+                        if stack_value_32 >= 2**31:
+                            var_value_signed = stack_value_32 - 2**32
+                        else:
+                            var_value_signed = stack_value_32
+                    emulator.variable_values[var_name] = var_value_signed
         
         if 'rbp' in first_line.lower() or 'jmp' in first_line.lower() or 'jl' in first_line.lower() or 'jge' in first_line.lower():
             print(f"DEBUG: Antes snapshot - RBP=0x{emulator.regs['rbp']:x}, Stack size={len(emulator.stack)}, RSP=0x{emulator.regs['rsp']:x}")
