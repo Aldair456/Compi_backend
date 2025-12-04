@@ -144,9 +144,9 @@ void WhileStmt::accept(Visitor* visitor) {
     visitor->visitWhileStmt(this);
 }
 
-ForStmt::ForStmt(unique_ptr<Stmt> initializer, unique_ptr<Expr> condition, 
+ForStmt::ForStmt(unique_ptr<Stmt> initializer, unique_ptr<Expr> condition,
                  unique_ptr<Expr> increment, unique_ptr<Stmt> body)
-    : initializer(move(initializer)), condition(move(condition)), 
+    : initializer(move(initializer)), condition(move(condition)),
       increment(move(increment)), body(move(body)) {}
 
 void ForStmt::accept(Visitor* visitor) {
@@ -167,8 +167,8 @@ void ExprStmt::accept(Visitor* visitor) {
     visitor->visitExprStmt(this);
 }
 
-FunctionDecl::FunctionDecl(DataType returnType, string name, 
-                           vector<pair<DataType, string>> parameters, 
+FunctionDecl::FunctionDecl(DataType returnType, string name,
+                           vector<pair<DataType, string>> parameters,
                            unique_ptr<Block> body)
     : returnType(returnType), name(name), parameters(parameters), body(move(body)) {}
 

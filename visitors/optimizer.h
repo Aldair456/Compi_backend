@@ -6,6 +6,11 @@
 #include <memory>
 #include <set>
 
+
+
+
+
+
 using namespace std;
 
 class Optimizer {
@@ -22,7 +27,6 @@ private:
 
     unique_ptr<Expr> cloneExpr(Expr* expr);
     bool tryUnrollLoop(ForStmt* forStmt, vector<unique_ptr<Stmt>>& output);
-    
     bool tryEvaluateConstantLoop(ForStmt* forStmt, vector<unique_ptr<Stmt>>& output);
     unique_ptr<Expr> optimizeBinaryOp(BinaryOp* node);
 
@@ -33,9 +37,7 @@ private:
     void optimizeBlock(Block* block);
 
     void eliminateDeadStores(Block* block);
-    
     void getReadVariables(Expr* expr, set<string>& variables);
-    
     void getReadVariablesInStmt(Stmt* stmt, set<string>& variables);
 
     bool isIntLiteral(Expr* expr, int& value);
