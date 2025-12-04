@@ -8,7 +8,7 @@ int main() {
     x = 1000000L;
     y = 2000000L;
     
-    printf("%ld\n", x + y);
+    printf("%ld\n", x + y);//300000
     
     return 0;
 }

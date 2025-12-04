@@ -1,17 +1,9 @@
 // Test 1: Declaración de variables básicas
 #include <stdio.h>
-
 int main() {
-    int x;
-    int y;
-    long z;
-    y = 0;
-    z = 45;
-    x = 11;
-    
-    printf("%d\n", x);
-    printf("%d\n", y);
-    printf("%ld\n", z);
-    
-    return 0;
+  int a = 5;
+  int b = 3;
+  int suma = a + b;
+  printf("%d\n", suma); // Debería imprimir 8
+  return 0;
 }

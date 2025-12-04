@@ -1,3 +1,5 @@
+#include <stdio.h>
+
 int main() {
     float a = 3 + 4.5;
     printf("Result: %.2f\n", a);

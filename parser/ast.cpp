@@ -27,7 +27,7 @@ void FloatLiteral::accept(Visitor* visitor) {
     visitor->visitFloatLiteral(this);
 }
 
-LongLiteral::LongLiteral(long value) : value(value) {
+LongLiteral::LongLiteral(long long value) : value(value) {
     inferredType = DataType::LONG;
 }
 

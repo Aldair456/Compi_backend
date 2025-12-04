@@ -52,8 +52,8 @@ public:
 
 class LongLiteral : public Expr {
 public:
-    long value;
-    LongLiteral(long value);
+    long long value;
+    LongLiteral(long long value);
     void accept(Visitor* visitor) override;
 };
 

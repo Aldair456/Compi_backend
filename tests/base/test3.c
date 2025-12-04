@@ -8,10 +8,10 @@ int main() {
     x = 5;
     y = 10;
     
-    if (x < y) {
-        printf("%d\n", x);
+    if (x > y) {
+        printf("%d\n", x);//5
     } else {
-        printf("%d\n", y);
+        printf("%d\n", y);//10
     }
     
     return 0;
