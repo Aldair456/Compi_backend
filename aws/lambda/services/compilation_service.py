@@ -8,7 +8,7 @@ from ..utils.response import ResponseBuilder
 from ..utils.request_parser import RequestParser
 import os
 
-
+  
 class CompilationService:
     def __init__(self):
         self.compiler = CompilerManager()
@@ -211,6 +211,9 @@ class CompilationService:
             # Obtener stackFrame del snapshot
             stack_frame = snapshot.get('stackFrame', {})
             
+            # Obtener descripción detallada de la instrucción
+            instruction_description = snapshot.get('instructionDescription', {})
+            
             step_info = {
                 'step': i,
                 'c_line': c_line,
@@ -220,7 +223,8 @@ class CompilationService:
                 'registers': step_registers,
                 'stack': step_stack,
                 'variables': variables,
-                'stackFrame': stack_frame
+                'stackFrame': stack_frame,
+                'instructionDescription': instruction_description
             }
             
             steps_data.append(step_info)

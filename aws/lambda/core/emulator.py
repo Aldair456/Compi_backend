@@ -34,6 +34,9 @@ class X86Emulator:
         self.stack_frame_map: Dict[int, Dict[str, Any]] = {}
         # Contador de step para rastrear valores temporales
         self.current_step: int = 0
+        # Valores de registros antes de ejecutar una instrucción (para descripciones)
+        self.registers_before_instruction: Dict[str, int] = {}
+    
     def get_reg(self, name: str) -> int:
         if name in self.regs:
             return self.regs[name]
@@ -1125,12 +1128,16 @@ class X86Emulator:
         # Generar stack_frame_info desde stack_frame_map
         stack_frame_info = self._generate_stack_frame_info()
         
+        # Generar descripción detallada de la instrucción
+        instruction_description = self._generate_instruction_description(instruction_data)
+        
         return {
             'instruction': instruction_data,
             'registers': registers,
             'stack': stack_list,
             'callStack': call_stack_list,
             'stackFrame': stack_frame_info,
+            'instructionDescription': instruction_description,
             'flags': {
                 'ZF': self.flags.get('ZF', 0),
                 'SF': self.flags.get('SF', 0),
@@ -1253,6 +1260,336 @@ class X86Emulator:
             result['return_address'] = return_address
         
         return result
+    
+    def _generate_instruction_description(self, instruction_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Genera una descripción detallada de la instrucción y su efecto en los registros.
+        Retorna un diccionario con:
+        - description: Descripción textual de qué hace la instrucción
+        - registers_read: Lista de registros que se leen
+        - registers_written: Lista de registros que se escriben
+        - register_changes: Diccionario con los cambios en cada registro (valor anterior -> valor nuevo)
+        - memory_operations: Lista de operaciones de memoria (si las hay)
+        """
+        asm = instruction_data.get('assembly', '').strip()
+        if not asm:
+            return {
+                'description': 'Instrucción no disponible',
+                'registers_read': [],
+                'registers_written': [],
+                'register_changes': {},
+                'memory_operations': []
+            }
+        
+        first_line = asm.split('\n')[0].strip()
+        
+        # Obtener valores de registros ANTES de la instrucción (si están guardados)
+        # Si no están guardados, usar los valores actuales como fallback
+        if self.registers_before_instruction:
+            before_regs = {k: v for k, v in self.registers_before_instruction.items()}
+        else:
+            before_regs = {k: v for k, v in self.regs.items()}
+        
+        # Obtener valores actuales de registros DESPUÉS de la instrucción
+        current_regs = {k: v for k, v in self.regs.items()}
+        
+        description = ""
+        registers_read = []
+        registers_written = []
+        register_changes = {}
+        memory_operations = []
+        
+        import re
+        
+        # movl $inm, %reg
+        mov_imm_match = re.match(r'movl\s+\$(-?\d+),\s*%(\w+)', first_line)
+        if mov_imm_match:
+            value = int(mov_imm_match.group(1))
+            reg = mov_imm_match.group(2)
+            reg_full = 'rax' if reg == 'eax' else ('rbx' if reg == 'ebx' else reg)
+            registers_written.append(reg_full)
+            old_value = before_regs.get(reg_full, 0) & 0xFFFFFFFF
+            if old_value >= 2**31:
+                old_value_signed = old_value - 2**32
+            else:
+                old_value_signed = old_value
+            register_changes[reg_full] = {
+                'before': old_value_signed,
+                'after': value,
+                'hex_before': f'0x{old_value:x}',
+                'hex_after': f'0x{value & 0xFFFFFFFF:x}'
+            }
+            description = f"Carga el valor inmediato {value} en el registro %{reg_full}. %{reg_full} queda con {value}."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # movl %reg1, offset(%rbp) - Guardar en memoria
+        mov_store_match = re.match(r'movl\s+%(\w+),\s*(-?\d+)\(%rbp\)', first_line)
+        if mov_store_match:
+            src_reg = mov_store_match.group(1)
+            offset = int(mov_store_match.group(2))
+            src_reg_full = 'rax' if src_reg == 'eax' else ('rbx' if src_reg == 'ebx' else src_reg)
+            registers_read.append(src_reg_full)
+            src_value = before_regs.get(src_reg_full, 0) & 0xFFFFFFFF
+            if src_value >= 2**31:
+                src_value_signed = src_value - 2**32
+            else:
+                src_value_signed = src_value
+            var_addr = self.regs['rbp'] + offset
+            memory_operations.append({
+                'type': 'write',
+                'address': f'0x{var_addr:x}',
+                'addressDecimal': var_addr,
+                'offset': f'{offset}(%rbp)',
+                'value': src_value_signed,
+                'source_register': src_reg_full
+            })
+            var_name = instruction_data.get('varName', '')
+            if var_name:
+                description = f"Copia el valor de %{src_reg_full} (que es {src_value_signed}) a la dirección {offset}(%rbp), donde está la variable {var_name}. Almacena {src_value_signed} en {var_name}."
+            else:
+                description = f"Copia el valor de %{src_reg_full} (que es {src_value_signed}) a la dirección {offset}(%rbp)."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # movl offset(%rbp), %reg - Cargar de memoria
+        mov_load_match = re.match(r'movl\s+(-?\d+)\(%rbp\),\s*%(\w+)', first_line)
+        if mov_load_match:
+            offset = int(mov_load_match.group(1))
+            dst_reg = mov_load_match.group(2)
+            dst_reg_full = 'rax' if dst_reg == 'eax' else ('rbx' if dst_reg == 'ebx' else dst_reg)
+            var_addr = self.regs['rbp'] + offset
+            # Leer valor de memoria o variable
+            if var_addr in self.stack:
+                mem_value = self.stack[var_addr] & 0xFFFFFFFF
+                if mem_value >= 2**31:
+                    mem_value_signed = mem_value - 2**32
+                else:
+                    mem_value_signed = mem_value
+            else:
+                mem_value_signed = 0
+            registers_written.append(dst_reg_full)
+            old_value = before_regs.get(dst_reg_full, 0) & 0xFFFFFFFF
+            if old_value >= 2**31:
+                old_value_signed = old_value - 2**32
+            else:
+                old_value_signed = old_value
+            register_changes[dst_reg_full] = {
+                'before': old_value_signed,
+                'after': mem_value_signed,
+                'hex_before': f'0x{old_value:x}',
+                'hex_after': f'0x{mem_value_signed & 0xFFFFFFFF:x}'
+            }
+            memory_operations.append({
+                'type': 'read',
+                'address': f'0x{var_addr:x}',
+                'addressDecimal': var_addr,
+                'offset': f'{offset}(%rbp)',
+                'value': mem_value_signed
+            })
+            var_name = instruction_data.get('varName', '')
+            if var_name:
+                description = f"Carga el valor de la variable {var_name} desde la dirección {offset}(%rbp) en el registro %{dst_reg_full}. %{dst_reg_full} = {var_name} = {mem_value_signed}."
+            else:
+                description = f"Carga el valor desde la dirección {offset}(%rbp) en el registro %{dst_reg_full}. %{dst_reg_full} = {mem_value_signed}."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # pushq %reg
+        push_match = re.match(r'pushq\s+%(\w+)', first_line)
+        if push_match:
+            reg = push_match.group(1)
+            registers_read.append(reg)
+            reg_value = before_regs.get(reg, 0)
+            if reg_value >= 2**63:
+                reg_value_signed = reg_value - 2**64
+            else:
+                reg_value_signed = reg_value
+            stack_addr = current_regs.get('rsp', self.regs['rsp'])  # Después del push
+            memory_operations.append({
+                'type': 'push',
+                'address': f'0x{stack_addr:x}',
+                'addressDecimal': stack_addr,
+                'value': reg_value_signed,
+                'source_register': reg
+            })
+            registers_written.append('rsp')
+            old_rsp = before_regs.get('rsp', self.regs['rsp'])
+            new_rsp = current_regs.get('rsp', self.regs['rsp'])
+            register_changes['rsp'] = {
+                'before': old_rsp,
+                'after': new_rsp,
+                'hex_before': f'0x{old_rsp:x}',
+                'hex_after': f'0x{new_rsp:x}'
+            }
+            description = f"Decrementa %rsp en 8 y guarda el valor {reg_value_signed} de %{reg} en la pila. %rsp = %rsp - 8."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # popq %reg
+        pop_match = re.match(r'popq\s+%(\w+)', first_line)
+        if pop_match:
+            reg = pop_match.group(1)
+            stack_addr = before_regs.get('rsp', self.regs['rsp'])  # Donde estaba antes del pop
+            if stack_addr in self.stack_before_pop:
+                stack_val = self.stack_before_pop[stack_addr]
+            elif stack_addr in self.stack:
+                stack_val = self.stack[stack_addr]
+            else:
+                stack_val = 0
+            if stack_val >= 2**63:
+                stack_val_signed = stack_val - 2**64
+            else:
+                stack_val_signed = stack_val
+            registers_written.append(reg)
+            registers_written.append('rsp')
+            old_value = before_regs.get(reg, 0)
+            if old_value >= 2**63:
+                old_value_signed = old_value - 2**64
+            else:
+                old_value_signed = old_value
+            register_changes[reg] = {
+                'before': old_value_signed,
+                'after': stack_val_signed,
+                'hex_before': f'0x{old_value & 0xFFFFFFFFFFFFFFFF:x}',
+                'hex_after': f'0x{stack_val & 0xFFFFFFFFFFFFFFFF:x}'
+            }
+            old_rsp = before_regs.get('rsp', self.regs['rsp'])
+            new_rsp = current_regs.get('rsp', self.regs['rsp'])
+            register_changes['rsp'] = {
+                'before': old_rsp,
+                'after': new_rsp,
+                'hex_before': f'0x{old_rsp:x}',
+                'hex_after': f'0x{new_rsp:x}'
+            }
+            memory_operations.append({
+                'type': 'pop',
+                'address': f'0x{stack_addr:x}',
+                'addressDecimal': stack_addr,
+                'value': stack_val_signed,
+                'destination_register': reg
+            })
+            description = f"Saca el valor {stack_val_signed} de la pila y lo carga en %{reg}. %{reg} = {stack_val_signed}. %rsp = %rsp + 8."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # addl %reg1, %reg2
+        add_match = re.match(r'addl\s+%(\w+),\s*%(\w+)', first_line)
+        if add_match:
+            src_reg = add_match.group(1)
+            dst_reg = add_match.group(2)
+            src_reg_full = 'rax' if src_reg == 'eax' else ('rbx' if src_reg == 'ebx' else src_reg)
+            dst_reg_full = 'rax' if dst_reg == 'eax' else ('rbx' if dst_reg == 'ebx' else dst_reg)
+            registers_read.append(src_reg_full)
+            registers_read.append(dst_reg_full)
+            registers_written.append(dst_reg_full)
+            src_value = before_regs.get(src_reg_full, 0) & 0xFFFFFFFF
+            dst_value = before_regs.get(dst_reg_full, 0) & 0xFFFFFFFF
+            if src_value >= 2**31:
+                src_value_signed = src_value - 2**32
+            else:
+                src_value_signed = src_value
+            if dst_value >= 2**31:
+                dst_value_signed = dst_value - 2**32
+            else:
+                dst_value_signed = dst_value
+            result = (dst_value_signed + src_value_signed) & 0xFFFFFFFF
+            if result >= 2**31:
+                result_signed = result - 2**32
+            else:
+                result_signed = result
+            register_changes[dst_reg_full] = {
+                'before': dst_value_signed,
+                'after': result_signed,
+                'hex_before': f'0x{dst_value:x}',
+                'hex_after': f'0x{result:x}'
+            }
+            description = f"Suma %{src_reg_full} (que es {src_value_signed}) a %{dst_reg_full} (que es {dst_value_signed}). %{dst_reg_full} = %{dst_reg_full} + %{src_reg_full} = {dst_value_signed} + {src_value_signed} = {result_signed}."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # leave
+        if first_line.strip() == 'leave':
+            registers_read.append('rbp')
+            registers_written.append('rsp')
+            registers_written.append('rbp')
+            old_rsp = before_regs.get('rsp', 0)
+            old_rbp = before_regs.get('rbp', 0)
+            new_rsp = old_rbp
+            # leave hace: movq %rbp, %rsp; popq %rbp
+            new_rbp = current_regs.get('rbp', 0)
+            register_changes['rsp'] = {
+                'before': old_rsp,
+                'after': new_rsp,
+                'hex_before': f'0x{old_rsp:x}',
+                'hex_after': f'0x{new_rsp:x}'
+            }
+            register_changes['rbp'] = {
+                'before': old_rbp,
+                'after': new_rbp,
+                'hex_before': f'0x{old_rbp:x}',
+                'hex_after': f'0x{new_rbp:x}'
+            }
+            description = "Restaura el stack frame: %rsp = %rbp (deshace la reserva de espacio), luego restaura %rbp desde el stack (pop %rbp)."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # ret
+        if first_line.strip() == 'ret':
+            registers_read.append('rsp')
+            description = "Devuelve el control a la función llamadora. El valor de retorno está en %rax."
+            return {
+                'description': description,
+                'registers_read': registers_read,
+                'registers_written': registers_written,
+                'register_changes': register_changes,
+                'memory_operations': memory_operations
+            }
+        
+        # Instrucción no reconocida
+        description = f"Ejecuta la instrucción: {first_line}"
+        return {
+            'description': description,
+            'registers_read': registers_read,
+            'registers_written': registers_written,
+            'register_changes': register_changes,
+            'memory_operations': memory_operations
+        }
 
 
 def emulate_from_debug(debug_data: Dict[str, Any], max_steps: int = 1000) -> List[Dict[str, Any]]:
@@ -1396,6 +1733,9 @@ def emulate_from_debug(debug_data: Dict[str, Any], max_steps: int = 1000) -> Lis
         result = emulator.execute_instruction(asm)
         if emulator.call_stack:
             emulator.call_stack[-1]['rbp'] = emulator.regs['rbp']
+        
+        # Guardar valores de registros ANTES de ejecutar la instrucción
+        emulator.registers_before_instruction = {k: v for k, v in emulator.regs.items()}
         
         # Analizar la instrucción y actualizar valores de variables directamente
         if emulator.call_stack:
