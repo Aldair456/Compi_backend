@@ -31,8 +31,10 @@ class CompilationService:
             asm_content = self.compiler.read_assembly_output()
             debug_data = self.compiler.read_debug_output(source_code)
             execution_snapshots = []
-            if debug_mode:
-                execution_snapshots = self._run_emulation(debug_data)
+            # Si visualize_mode está activo, también necesitamos ejecutar la emulación
+            # porque los steps de visualización dependen de execution_snapshots
+            if debug_mode or visualize_mode:
+                execution_snapshots = self._run_emulation(debug_data, asm_content)
             
             if visualize_mode:
                 visualization_json = self._generate_visualization_json(debug_data, execution_snapshots, asm_content)
@@ -52,10 +54,13 @@ class CompilationService:
             print(f"Error: {str(e)}")
             print(error_trace)
             return self.response_builder.internal_error(e, error_trace)
-    def _run_emulation(self, debug_data: Dict[str, Any]) -> list:
+    def _run_emulation(self, debug_data: Dict[str, Any], asm_content: str = '') -> list:
         try:
             print("Starting x86-64 emulation...")
-            execution_snapshots = emulate_from_debug(debug_data, max_steps=MAX_EMULATION_STEPS)
+            print(f"DEBUG _run_emulation: asm_content length = {len(asm_content) if asm_content else 0}")
+            if asm_content and 'float_const' in asm_content:
+                print(f"DEBUG: asm_content CONTIENE float_const!")
+            execution_snapshots = emulate_from_debug(debug_data, asm_content, max_steps=MAX_EMULATION_STEPS)
             print(f"Execution snapshots generated: {len(execution_snapshots)} steps")
             return execution_snapshots
         except Exception as e:

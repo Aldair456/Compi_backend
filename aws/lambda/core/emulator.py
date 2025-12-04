@@ -1,4 +1,6 @@
 import re
+import math
+import struct
 from typing import Dict, List, Tuple, Any, Optional, Union
 import logging
 
@@ -9,11 +11,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def sanitize_float(value: float) -> float:
+    """Sanitiza un float para que sea válido en JSON (no NaN ni Infinity)"""
+    if math.isnan(value) or math.isinf(value):
+        return 0.0
+    return round(value, 6)
+
 class X86Emulator:
     REGISTERS_64BIT = ['rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi', 'rbp', 'rsp',
                        'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15']
     REGISTERS_32BIT = ['eax', 'ebx', 'ecx', 'edx', 'edi', 'esi', 'r8d', 'r9d']
     REGISTERS_8BIT = ['al', 'bl', 'cl', 'dl', 'r8b', 'r9b', 'ah', 'bh', 'ch', 'dh']
+    REGISTERS_XMM = ['xmm0', 'xmm1', 'xmm2', 'xmm3', 'xmm4', 'xmm5', 'xmm6', 'xmm7']
     INITIAL_STACK_POINTER = 0x7fffffffe000
     def __init__(self):
         self.regs: Dict[str, int] = {
@@ -25,6 +35,7 @@ class X86Emulator:
         self.xmm_regs: Dict[str, float] = {
             reg: 0.0 for reg in self.REGISTERS_XMM
         }
+        self.float_constants: Dict[str, float] = {}  # Constantes float desde .data
         self.flags: Dict[str, int] = {'ZF': 0, 'SF': 0, 'CF': 0, 'OF': 0}
         self.stack: Dict[int, int] = {}
         self.labels: Dict[str, int] = {}
@@ -44,6 +55,12 @@ class X86Emulator:
     def get_reg(self, name: str) -> int:
         if name in self.regs:
             return self.regs[name]
+        # Registros XMM (floats) - convertir float a int (IEEE 754)
+        if name in self.REGISTERS_XMM:
+            float_val = self.xmm_regs.get(name, 0.0)
+            # Convertir float a su representación int (IEEE 754)
+            int_val = struct.unpack('I', struct.pack('f', float_val))[0]
+            return int_val
         if name == 'eax':
             return self.regs['rax'] & 0xFFFFFFFF
         elif name == 'ebx':
@@ -222,6 +239,12 @@ class X86Emulator:
         except ValueError:
             pass
         
+        # Sintaxis AT&T: label(%rip) - RIP-relative (para constantes)
+        rip_relative = re.match(r'([\w_]+)\(%rip\)', op)
+        if rip_relative:
+            label = rip_relative.group(1)
+            return ('rip_label', label)
+        
         # Sintaxis AT&T: offset(%reg) o (%reg)
         att_mem_match = re.match(r'(-?\d+)\(%(\w+)\)', op)
         if att_mem_match:
@@ -260,6 +283,18 @@ class X86Emulator:
             return self.get_reg(op_data)
         elif op_type == 'imm':
             return op_data
+        elif op_type == 'rip_label':
+            # RIP-relative label - buscar en constantes float
+            label = op_data
+            print(f"DEBUG get_value rip_label: label='{label}', float_constants={self.float_constants}")
+            if label in self.float_constants:
+                float_val = self.float_constants[label]
+                # Convertir float a int (representación en bits IEEE 754)
+                int_val = struct.unpack('I', struct.pack('f', float_val))[0]
+                print(f"DEBUG: Constante {label} = {float_val} -> int = {int_val} (0x{int_val:08x})")
+                return int_val
+            print(f"DEBUG: Constante {label} NO ENCONTRADA en float_constants!")
+            return 0
         elif op_type == 'mem':
             base_reg, offset = op_data
             if base_reg == 'rbp':
@@ -1094,11 +1129,13 @@ class X86Emulator:
             return
     
     def _get_variable_value(self, var_name: str, var_addr: int, var_type: str, 
-                           offset: int, instruction_data: Dict[str, Any]) -> Tuple[int, int, str]:
+                           offset: int, instruction_data: Dict[str, Any]) -> Tuple[Any, int, str]:
         """
         Obtiene el valor actual de una variable.
         Retorna: (valor_signed, valor_hex, location)
+        Para floats, valor_signed es el float real (ej: 3.5)
         """
+        import struct
         inst_var_name = instruction_data.get('varName', '')
         inst_asm = instruction_data.get('assembly', '').strip()
         
@@ -1106,7 +1143,19 @@ class X86Emulator:
         # Esto asegura que en bucles, los valores actualizados se reflejen correctamente
         if var_addr in self.stack:
             stack_value = self.stack[var_addr]
-            if var_type == 'long':
+            
+            # FLOAT: Interpretar los 4 bytes como IEEE 754 float
+            if var_type == 'float':
+                stack_value_32 = stack_value & 0xFFFFFFFF
+                try:
+                    float_value = struct.unpack('<f', struct.pack('<I', stack_value_32))[0]
+                    var_value_signed = sanitize_float(float_value)  # Sanitizar para JSON válido
+                except:
+                    var_value_signed = 0.0
+                var_value = stack_value_32
+                var_location = f"stack:0x{var_addr:x}"
+                return var_value_signed, var_value, var_location
+            elif var_type == 'long':
                 if stack_value >= 2**63:
                     var_value_signed = stack_value - 2**64
                 else:
@@ -1125,11 +1174,15 @@ class X86Emulator:
         # PRIORIDAD 2: Si tenemos el valor en variable_values cache (pero no en stack todavía)
         if var_name in self.variable_values:
             var_value_signed = self.variable_values[var_name]
-            var_value = var_value_signed if var_value_signed >= 0 else (var_value_signed + (2**64 if var_type == 'long' else 2**32))
+            if var_type == 'float':
+                # Para floats, el cache ya tiene el valor float
+                var_value = 0  # No tenemos el raw aquí
+            else:
+                var_value = var_value_signed if var_value_signed >= 0 else (var_value_signed + (2**64 if var_type == 'long' else 2**32))
             var_location = f"stack:0x{var_addr:x}"
             return var_value_signed, var_value, var_location
         
-        var_value_signed = 0
+        var_value_signed = 0 if var_type != 'float' else 0.0
         var_value = 0
         var_location = f"stack:0x{var_addr:x}"
         
@@ -1140,9 +1193,9 @@ class X86Emulator:
         # Verificar si la instrucción escribe a esta dirección de variable
         writes_to_var = False
         if inst_asm:
-            # Detectar si la instrucción escribe a esta dirección (ej: movl %eax, -4(%rbp))
+            # Detectar si la instrucción escribe a esta dirección (ej: movl %eax, -4(%rbp) o movss %xmm0, -4(%rbp))
             offset_str = f'-{abs(offset)}(%rbp)' if offset < 0 else f'+{offset}(%rbp)'
-            if offset_str in inst_asm and ('movl' in inst_asm or 'movq' in inst_asm):
+            if offset_str in inst_asm and ('movl' in inst_asm or 'movq' in inst_asm or 'movss' in inst_asm):
                 # Verificar que sea el destino (segundo operando)
                 parts = inst_asm.split(',')
                 if len(parts) == 2 and offset_str in parts[1]:
@@ -1150,12 +1203,22 @@ class X86Emulator:
         
         # Si está siendo modificada en esta instrucción, leer del registro
         if is_current_var or writes_to_var:
-            if var_type == 'long':
+            if var_type == 'float':
+                # Para floats, leer de XMM0
+                float_val = self.xmm_regs.get('xmm0', 0.0)
+                var_value_signed = sanitize_float(float_val)
+                try:
+                    var_value = struct.unpack('<I', struct.pack('<f', float_val))[0] if not math.isnan(float_val) and not math.isinf(float_val) and float_val != 0 else 0
+                except:
+                    var_value = 0
+                var_location = "register:xmm0"
+            elif var_type == 'long':
                 var_value = self.regs.get('rax', 0)
                 if var_value >= 2**63:
                     var_value_signed = var_value - 2**64
                 else:
                     var_value_signed = var_value
+                var_location = "register:rax"
             else:
                 var_value_raw = self.regs.get('rax', 0) & 0xFFFFFFFF
                 var_value = var_value_raw
@@ -1163,17 +1226,27 @@ class X86Emulator:
                     var_value_signed = var_value - 2**32
                 else:
                     var_value_signed = var_value
-            var_location = "register:eax" if var_type != 'long' else "register:rax"
+                var_location = "register:eax"
         
         # 4. Si la instrucción carga esta variable al registro, leer del registro
         elif inst_asm and f'-{abs(offset)}(%rbp)' in inst_asm:
-            if 'movl' in inst_asm or 'movq' in inst_asm:
+            if 'movss' in inst_asm and var_type == 'float':
+                # Float: leer de XMM0
+                float_val = self.xmm_regs.get('xmm0', 0.0)
+                var_value_signed = sanitize_float(float_val)
+                try:
+                    var_value = struct.unpack('<I', struct.pack('<f', float_val))[0] if not math.isnan(float_val) and not math.isinf(float_val) and float_val != 0 else 0
+                except:
+                    var_value = 0
+                var_location = "register:xmm0"
+            elif 'movl' in inst_asm or 'movq' in inst_asm:
                 if var_type == 'long':
                     var_value = self.regs.get('rax', 0)
                     if var_value >= 2**63:
                         var_value_signed = var_value - 2**64
                     else:
                         var_value_signed = var_value
+                    var_location = "register:rax"
                 else:
                     var_value_raw = self.regs.get('rax', 0) & 0xFFFFFFFF
                     var_value = var_value_raw
@@ -1181,11 +1254,12 @@ class X86Emulator:
                         var_value_signed = var_value - 2**32
                     else:
                         var_value_signed = var_value
-                var_location = "register:eax" if var_type != 'long' else "register:rax"
+                    var_location = "register:eax"
         
         return var_value_signed, var_value, var_location
     
     def get_snapshot(self, instruction_data: Dict[str, Any]) -> Dict[str, Any]:
+        import struct
         registers = {}
         all_regs = self.REGISTERS_64BIT + self.REGISTERS_32BIT
         for reg_name in all_regs:
@@ -1193,6 +1267,19 @@ class X86Emulator:
             registers[reg_name] = {
                 'hex': f'0x{val:x}',
                 'decimal': val if val < 2**63 else val - 2**64
+            }
+        # Agregar registros XMM (floats)
+        for xmm_name in self.REGISTERS_XMM:
+            float_val = self.xmm_regs.get(xmm_name, 0.0)
+            # Convertir float a su representación hex (IEEE 754)
+            try:
+                raw_int = struct.unpack('<I', struct.pack('<f', float_val))[0]
+            except:
+                raw_int = 0
+            registers[xmm_name] = {
+                'hex': f'0x{raw_int:08x}',
+                'decimal': sanitize_float(float_val),
+                'float': sanitize_float(float_val)
             }
         stack_list = []
         if self.stack:
@@ -1749,8 +1836,48 @@ class X86Emulator:
         }
 
 
-def emulate_from_debug(debug_data: Dict[str, Any], max_steps: int = 1000) -> List[Dict[str, Any]]:
+def _extract_float_constants(asm_content: str) -> Dict[str, float]:
+    """Extrae constantes float del assembly (.section .data)"""
+    constants = {}
+    
+    print(f"DEBUG _extract_float_constants: asm_content length = {len(asm_content) if asm_content else 0}")
+    
+    if not asm_content:
+        print("DEBUG: asm_content está vacío, no se pueden extraer constantes")
+        return constants
+    
+    # Buscar todas las líneas con definiciones de constantes float
+    # Formato: float_const_N: .float VALOR
+    lines_checked = 0
+    for line in asm_content.split('\n'):
+        lines_checked += 1
+        if 'float_const' in line:
+            print(f"DEBUG: Línea con float_const: '{line}'")
+        match = re.search(r'(float_const_\d+):\s*\.float\s+([\d.]+)', line)
+        if match:
+            label = match.group(1)
+            value = float(match.group(2))
+            constants[label] = value
+            print(f"DEBUG: Constante float encontrada: {label} = {value}")
+    
+    print(f"DEBUG: Se revisaron {lines_checked} líneas, se encontraron {len(constants)} constantes")
+    return constants
+
+def emulate_from_debug(debug_data: Dict[str, Any], asm_content: str = '', max_steps: int = 1000) -> List[Dict[str, Any]]:
+    print(f"=== INICIO emulate_from_debug ===")
+    print(f"DEBUG: asm_content recibido, longitud = {len(asm_content) if asm_content else 0}")
+    if asm_content:
+        print(f"DEBUG: Primeros 500 chars de asm_content:\n{asm_content[:500]}")
+    else:
+        print("DEBUG: WARNING - asm_content ESTÁ VACÍO!")
+    
     emulator = X86Emulator()
+    
+    # Extraer constantes float del assembly completo
+    float_constants = _extract_float_constants(asm_content)
+    emulator.float_constants = float_constants
+    print(f"DEBUG: Constantes float cargadas: {float_constants}")
+    
     instructions = debug_data.get('instructions', [])
     stack_frames_info = debug_data.get('stackFrame', [])
     snapshots = []
